@@ -1,16 +1,18 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import SwiftUI
 
 // MARK: - Configuration
 // The hotkey that opens/closes the overlay. ⌘+Space is blocked by Spotlight,
-// so default to ⌥+Space (option + space). ⌥⌘+Space also works if you
+// so default to ⇧⌥+Space (shift + option + space). ⌥⌘+Space also works if you
 // prefer. To change: modify `hotkeyModifiers` and `hotkeyKeyCode` below.
 //
 // Common keyCodes: space=49, Q=12, W=13, E=14, R=15, T=16,
 //                  Y=17, U=18, I=19, O=21, P=22, `[`=33
-let hotkeyModifiers: NSEvent.ModifierFlags = [.option]
+let hotkeyModifiers: NSEvent.ModifierFlags = [.shift, .option]
 let hotkeyKeyCode: Int = 49                 // space bar
+private let carbonHotkeyID = EventHotKeyID(signature: OSType(0x5048544E), id: 1) // PHTN
 
 // MARK: - App entry point
 //
@@ -39,7 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: OverlayPanel?
     private let state = ScanState()
     private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var reindexMonitor: Any?
+    private var hotKeyRef: EventHotKeyRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FileHandle.standardError.write("[photon-overlay] didFinishLaunching\n".data(using: .utf8)!)
@@ -66,22 +70,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.contentView = NSHostingView(rootView: root)
         self.panel = panel
 
+        registerSystemHotkey()
         installHotkeys()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
         FileHandle.standardError.write("[photon-overlay] terminating\n".data(using: .utf8)!)
     }
 
-    // MARK: Hotkeys (global)
+    // MARK: Hotkeys
+
+    private func registerSystemHotkey() {
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: OSType(kEventHotKeyPressed)
+        )
+        let selfPointer = Unmanaged.passUnretained(self).toOpaque()
+
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, userData in
+                guard let event, let userData else { return noErr }
+
+                var hotkeyID = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotkeyID
+                )
+                guard status == noErr,
+                      hotkeyID.signature == carbonHotkeyID.signature,
+                      hotkeyID.id == carbonHotkeyID.id else {
+                    return noErr
+                }
+
+                let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+                Task { @MainActor in delegate.toggle() }
+                return noErr
+            },
+            1,
+            &eventType,
+            selfPointer,
+            nil
+        )
+
+        let status = RegisterEventHotKey(
+            UInt32(hotkeyKeyCode),
+            UInt32(shiftKey | optionKey),
+            carbonHotkeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        if status != noErr {
+            FileHandle.standardError.write("[photon-overlay] RegisterEventHotKey failed: \(status)\n".data(using: .utf8)!)
+        }
+    }
 
     private func installHotkeys() {
+        func handlesOverlayToggle(_ event: NSEvent) -> Bool {
+            event.keyCode == hotkeyKeyCode
+                && event.modifierFlags.contains(.shift)
+                && event.modifierFlags.contains(.option)
+        }
+
         // Overlay toggle hotkey (configured via constants above)
         // Use `.contains` so it works even if other modifier flags (capsLock, etc.) are set
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == hotkeyKeyCode && event.modifierFlags.contains(hotkeyModifiers) {
+            if handlesOverlayToggle(event) {
                 DispatchQueue.main.async { self?.toggle() }
             }
+        }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if handlesOverlayToggle(event) {
+                self?.toggle()
+                return nil
+            }
+            return event
         }
         // ⌥+R → reindex  (R keyCode = 15)
         reindexMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
