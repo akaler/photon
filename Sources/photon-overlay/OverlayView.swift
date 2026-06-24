@@ -21,8 +21,17 @@ struct OverlayView: View {
 
             ResultsList(state: state, onSelect: onSubmit, onReveal: onReveal)
         }
-        .frame(width: 560, height: 360)
-        .background(Color(NSColor.windowBackgroundColor))
+        .frame(width: 720, height: 460)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.55))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onKeyPress(.upArrow)    { state.moveUp();    return .handled }
         .onKeyPress(.downArrow)  { state.moveDown();  return .handled }
         .onKeyPress(.escape)     { onClose();          return .handled }
@@ -59,11 +68,11 @@ private struct SearchBar: View {
             Image(systemName: isScanning ? "circle.dotted" : "magnifyingglass")
                 .symbolEffect(.variableColor.iterative, isActive: isScanning)
                 .foregroundStyle(.secondary)
-                .frame(width: 18)
+                .frame(width: 20)
 
             TextField(isScanning ? "Scanning…" : "Search apps & files", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 20, weight: .light))
+                .font(.system(size: 24, weight: .light))
                 .disableAutocorrection(true)
 
             if !text.isEmpty {
@@ -73,8 +82,8 @@ private struct SearchBar: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
     }
 }
 
@@ -119,14 +128,14 @@ private struct ResultRow: View {
              ?? Image(systemName: result.kind == .directory ? "folder" : "doc"))
                 .resizable()
                 .aspectRatio(1, contentMode: .fit)
-                .frame(width: 20, height: 20)
+                .frame(width: 26, height: 26)
                 .padding(.leading, 2)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(result.name).font(.system(size: 14))
+                Text(result.name).font(.system(size: 16))
                     .lineLimit(1)
                 Text(result.path.path)
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -136,13 +145,20 @@ private struct ResultRow: View {
 
             if let size = result.displaySize {
                 Text(size)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(isSelected ? Color.accentColor.opacity(0.9) : .clear)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.9))
+            } else {
+                Color.clear
+            }
+        }
         .foregroundStyle(isSelected ? Color.white : Color.primary)
     }
 }

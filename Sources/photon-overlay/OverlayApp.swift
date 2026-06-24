@@ -163,7 +163,7 @@ final class OverlayPanel: NSPanel {
 
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 460),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false

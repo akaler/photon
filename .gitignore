@@ -3,6 +3,8 @@ Packages/
 DerivedData/
 *.DS_Store
 *.swiftpm/
+dist/
+Assets/AppIcon.iconset/
 Package.resolved
 .pi/
 openspec/
