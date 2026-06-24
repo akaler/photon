@@ -1,0 +1,10 @@
+.build/
+Packages/
+DerivedData/
+*.DS_Store
+*.swiftpm/
+Package.resolved
+.pi/
+openspec/
+*.netrc
+xcuserdata/
