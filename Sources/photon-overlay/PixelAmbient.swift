@@ -23,7 +23,7 @@ final class PixelAmbientView: NSView {
     /// Which ambience a theme gets (nil = none / static background).
     static func effect(for kind: ThemeKind) -> Effect? {
         switch kind {
-        case .synth, .matrix, .sunset: return .rain
+        case .matrix: return .rain
         case .ice: return .snow
         default: return nil
         }
@@ -259,7 +259,7 @@ final class PixelAmbientView: NSView {
         let dx = abs(Double(x) - Double(Self.gridW) / 2) / (Double(Self.gridW) / 2)
         let dy = abs(Double(y) - Double(Self.gridH) * 0.52) / (Double(Self.gridH) * 0.52)
         let d = max(dx, dy)
-        return 0.45 + 0.55 * pow(min(1, d), 1.5)
+        return 0.6 + 0.4 * pow(min(1, d), 1.5)
     }
 
     // MARK: - Render (one tiny RGBA bitmap, transparent except effect cells)
@@ -268,12 +268,29 @@ final class PixelAmbientView: NSView {
         bright = [Double](repeating: 0, count: Self.gridW * Self.gridH)
         columns = []
         colCooldown = 0
-        flakes = []
+        flakes = seedFlakes()
         heightMap = [Int](repeating: 0, count: Self.gridW)
         glows = []
         wind = 0; windTarget = 0; windTimer = 60
         frameCount = 0
         buf = [UInt8](repeating: 0, count: Self.gridW * Self.gridH * 4)
+    }
+
+    /// 20 visible flakes: far layer slow/dim, near layer faster/brighter.
+    private func seedFlakes() -> [Flake] {
+        var result: [Flake] = []
+        for _ in 0..<20 {
+            let far = Bool.random()
+            result.append(Flake(
+                x: Double.random(in: 0..<Double(Self.gridW)),
+                y: Double.random(in: 0..<Double(Self.gridH)),
+                speed: far ? 0.08 + Double.random(in: 0...0.12) : 0.2 + Double.random(in: 0...0.24),
+                drift: Double.random(in: 0...(2 * .pi)),
+                driftSpeed: 0.008 + Double.random(in: 0...0.02),
+                alpha: far ? 0.2 + Double.random(in: 0...0.15) : 0.45 + Double.random(in: 0...0.3),
+                windFactor: far ? 0.2 : 0.5))
+        }
+        return result
     }
 
     private func render() {

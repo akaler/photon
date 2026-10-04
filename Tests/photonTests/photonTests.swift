@@ -514,10 +514,10 @@ private func makeTempFile(_ name: String) -> URL {
 
 @Test func pixelAmbient_effectMapping() {
     // Rain family + snow; static themes stay static.
-    #expect(PixelAmbientView.effect(for: .matrix) == .rain)
-    #expect(PixelAmbientView.effect(for: .synth) == .rain)
-    #expect(PixelAmbientView.effect(for: .sunset) == .rain)
-    #expect(PixelAmbientView.effect(for: .ice) == .snow)
+    #expect(PixelAmbientView.effect(for: .matrix) == .rain)   // only Acid Matrix rains
+    #expect(PixelAmbientView.effect(for: .ice) == .snow)      // only Ice Circuit snows
+    #expect(PixelAmbientView.effect(for: .synth) == nil)      // static for now
+    #expect(PixelAmbientView.effect(for: .sunset) == nil)
     #expect(PixelAmbientView.effect(for: .classic) == nil)
     #expect(PixelAmbientView.effect(for: .carbonSolid) == nil)
     #expect(PixelAmbientView.effect(for: .schematic) == nil)
