@@ -200,33 +200,17 @@ struct OverlayView: View {
     // MARK: Settings rows (themes + scan folders)
 
     private enum SettingsItem: Equatable {
-        case theme(ThemeKind)
-        case cyberVariant(CyberVariant)  // sub-picker, visible under Cyberpunk
         case folder(Int)     // index into state.scanFolders
         case addFolder
         case hotkey(command: Bool)  // radio: true = ⌘Space, false = ⌥Space (default)
-    }
-
-    /// Cyberpunk's color variants show as sub-rows when the theme is active
-    /// or the cursor is on its row. Reads settingsIndex directly — going
-    /// through selectedSettingsRow would recurse back into settingsRows.
-    private var cyberVariantsVisible: Bool {
-        if theme.id == .cyberpunk { return true }
-        let cyberIndex = ThemeKind.allCases.firstIndex(of: .cyberpunk) ?? -1
-        return settingsIndex == cyberIndex
+        case theme(ThemeKind)
     }
 
     private var settingsRows: [SettingsItem] {
-        var rows: [SettingsItem] = []
-        for kind in ThemeKind.allCases {
-            rows.append(.theme(kind))
-            if kind == .cyberpunk && cyberVariantsVisible {
-                rows += CyberVariant.allCases.map(SettingsItem.cyberVariant)
-            }
-        }
-        return rows
-            + state.scanFolders.indices.map(SettingsItem.folder)
+        // Section order: scan folders (1), hotkey (2), themes (last).
+        state.scanFolders.indices.map(SettingsItem.folder)
             + [.addFolder, .hotkey(command: false), .hotkey(command: true)]
+            + ThemeKind.allCases.map(SettingsItem.theme)
     }
 
     private var selectedSettingsRow: SettingsItem? {
@@ -253,8 +237,6 @@ struct OverlayView: View {
         case .theme(let kind):
             state.setTheme(kind)
             exitSettings()
-        case .cyberVariant(let variant):
-            state.setCyberVariant(variant)  // apply live, stay open to compare
         case .folder(let idx):
             editingFolder = idx
             editingCap = false
@@ -461,47 +443,7 @@ struct OverlayView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 0) {
-                        settingsSectionHeader("Theme")
-
-                        ForEach(Array(ThemeKind.allCases.enumerated()), id: \.element) { _, kind in
-                            ThemeRow(
-                                kind: kind,
-                                theme: theme,
-                                isSelected: selectedSettingsRow == .theme(kind),
-                                isActive: kind == theme.id,
-                                onSelect: {
-                                    // Mouse click = activate (apply + close),
-                                    // same as Return. Arrows only move the cursor.
-                                    settingsIndex = ThemeKind.allCases.firstIndex(of: kind) ?? 0
-                                    activateSettingsSelection()
-                                }
-                            )
-                            .id(ThemeKind.allCases.firstIndex(of: kind) ?? 0)
-
-                            if kind == .cyberpunk && cyberVariantsVisible {
-                                ForEach(Array(CyberVariant.allCases.enumerated()), id: \.element) { _, variant in
-                                    let palette = variant.palette
-                                    SettingsRow(
-                                        title: variant.displayName,
-                                        subtitle: variant.rawValue,
-                                        theme: theme,
-                                        isSelected: selectedSettingsRow == .cyberVariant(variant),
-                                        isActive: theme.id == .cyberpunk && state.cyberVariant == variant,
-                                        dotHex: palette.accentHex,
-                                        onSelect: {
-                                            if let idx = settingsRows.firstIndex(of: .cyberVariant(variant)) {
-                                                settingsIndex = idx
-                                            }
-                                            state.setCyberVariant(variant)
-                                        }
-                                    )
-                                    .id(settingsRows.firstIndex(of: .cyberVariant(variant)) ?? 0)
-                                    .padding(.leading, 22)
-                                }
-                            }
-                        }
-
-                        settingsSectionHeader("Scan folders")
+                        settingsSectionHeader("1 · Scan folders")
 
                         if state.scanFolders.isEmpty {
                             settingsEmptyHint("Apps-only. Add folders to search files.")
@@ -515,10 +457,14 @@ struct OverlayView: View {
                                     editingCap: editingCap,
                                     onSelect: {
                                         // Click = move cursor only (no theme side effects).
-                                        settingsIndex = ThemeKind.allCases.count + index
+                                        if let idx = settingsRows.firstIndex(of: .folder(index)) {
+                                            settingsIndex = idx
+                                        }
                                     },
                                     onStartEdit: {
-                                        settingsIndex = ThemeKind.allCases.count + index
+                                        if let idx = settingsRows.firstIndex(of: .folder(index)) {
+                                            settingsIndex = idx
+                                        }
                                         editingFolder = index
                                         editingCap = false
                                     },
@@ -528,7 +474,7 @@ struct OverlayView: View {
                                         editingFolder = nil
                                     }
                                 )
-                                .id(ThemeKind.allCases.count + index)
+                                .id(settingsRows.firstIndex(of: .folder(index)) ?? 0)
                             }
                         }
 
@@ -547,7 +493,7 @@ struct OverlayView: View {
                         )
                         .id(settingsRows.firstIndex(of: .addFolder) ?? 0)
 
-                        settingsSectionHeader("Hotkey")
+                        settingsSectionHeader("2 · Hotkey")
 
                         ForEach(
                             [(false, "⌥Space", "default · Spotlight keeps ⌘Space"),
@@ -570,6 +516,24 @@ struct OverlayView: View {
                                 }
                             )
                             .id(settingsRows.firstIndex(of: .hotkey(command: command)) ?? 0)
+                        }
+
+                        settingsSectionHeader("3 · Theme")
+
+                        ForEach(Array(ThemeKind.allCases.enumerated()), id: \.element) { _, kind in
+                            ThemeRow(
+                                kind: kind,
+                                theme: theme,
+                                isSelected: selectedSettingsRow == .theme(kind),
+                                isActive: kind == theme.id,
+                                onSelect: {
+                                    // Mouse click = activate (apply + close),
+                                    // same as Return. Arrows only move the cursor.
+                                    settingsIndex = ThemeKind.allCases.firstIndex(of: kind) ?? 0
+                                    activateSettingsSelection()
+                                }
+                            )
+                            .id(settingsRows.firstIndex(of: .theme(kind)) ?? 0)
                         }
                     }
                 }

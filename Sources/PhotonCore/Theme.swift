@@ -7,7 +7,10 @@ public enum ThemeKind: String, Codable, CaseIterable, Sendable {
     case carbonSolid
     case schematic
     case paper
-    case cyberpunk
+    case synth
+    case matrix
+    case sunset
+    case ice
 
     public var displayName: String {
         switch self {
@@ -16,7 +19,10 @@ public enum ThemeKind: String, Codable, CaseIterable, Sendable {
         case .carbonSolid: return "Carbon Solid"
         case .schematic:   return "Schematic"
         case .paper:       return "Paper"
-        case .cyberpunk:   return "Cyberpunk"
+        case .synth:       return "Neon Synth"
+        case .matrix:      return "Acid Matrix"
+        case .sunset:      return "Synthwave Sunset"
+        case .ice:         return "Ice Circuit"
         }
     }
 }
@@ -27,76 +33,6 @@ public enum SelectionKind: String, Codable, Sendable {
     case accentFill  // full-width solid fill, text flips to onSelection
     case accentBar   // tinted row + accent bar on the leading edge
     case outline     // inset stroke
-}
-
-/// Color palettes for the Cyberpunk theme. The skeleton (layout, fonts,
-/// accent-bar selection, streak, chips) is shared; only these values differ.
-public struct CyberPalette: Sendable, Equatable {
-    public let bgTopHex: String
-    public let bgBottomHex: String
-    public let borderHex: String
-    public let textHex: String
-    public let accentHex: String
-    public let secondaryHex: String
-    public let streakSoftHex: String
-    public let streakBrightHex: String
-}
-
-/// The selectable color schemes inside the Cyberpunk theme.
-public enum CyberVariant: String, CaseIterable, Codable, Sendable {
-    case synth, matrix, sunset, electric, alert, ice
-
-    public var displayName: String {
-        switch self {
-        case .synth:    return "Neon Synth"
-        case .matrix:   return "Acid Matrix"
-        case .sunset:   return "Synthwave Sunset"
-        case .electric: return "Electric 2077"
-        case .alert:    return "Red Alert"
-        case .ice:      return "Ice Circuit"
-        }
-    }
-
-    public var palette: CyberPalette {
-        switch self {
-        case .synth:
-            return CyberPalette(
-                bgTopHex: "#0B0716", bgBottomHex: "#0A0612",
-                borderHex: "#E879F926", textHex: "#EAF2FF",
-                accentHex: "#22D3EE", secondaryHex: "#F472B6",
-                streakSoftHex: "#F472B6", streakBrightHex: "#22D3EE")
-        case .matrix:
-            return CyberPalette(
-                bgTopHex: "#050805", bgBottomHex: "#050805",
-                borderHex: "#4ADE802E", textHex: "#E8FFE9",
-                accentHex: "#4ADE80", secondaryHex: "#A3E635",
-                streakSoftHex: "#A3E635", streakBrightHex: "#4ADE80")
-        case .sunset:
-            return CyberPalette(
-                bgTopHex: "#12081F", bgBottomHex: "#1A0B2E",
-                borderHex: "#FF2E8838", textHex: "#FFE9F4",
-                accentHex: "#FF2E88", secondaryHex: "#FF8A3D",
-                streakSoftHex: "#FF8A3D", streakBrightHex: "#FF2E88")
-        case .electric:
-            return CyberPalette(
-                bgTopHex: "#060606", bgBottomHex: "#060606",
-                borderHex: "#FCEE0A33", textHex: "#FDFDF2",
-                accentHex: "#FCEE0A", secondaryHex: "#FF4D4D",
-                streakSoftHex: "#FCEE0A", streakBrightHex: "#FCEE0A")
-        case .alert:
-            return CyberPalette(
-                bgTopHex: "#0D0507", bgBottomHex: "#0A0406",
-                borderHex: "#FF3B5C33", textHex: "#FFEDEF",
-                accentHex: "#FF3B5C", secondaryHex: "#FF8A3D",
-                streakSoftHex: "#FF3B5C", streakBrightHex: "#FF3B5C")
-        case .ice:
-            return CyberPalette(
-                bgTopHex: "#04101C", bgBottomHex: "#030A12",
-                borderHex: "#00F0FF2E", textHex: "#E8FDFF",
-                accentHex: "#00F0FF", secondaryHex: "#7DD3FC",
-                streakSoftHex: "#00F0FF", streakBrightHex: "#E0FEFF")
-        }
-    }
 }
 
 /// Pure data describing one skin. PhotonCore is Foundation-only, so colors
@@ -147,9 +83,7 @@ public struct Theme: Sendable, Equatable {
     public let usesDottedDividers: Bool
     public let showsSlotChips: Bool
 
-    /// - Parameter variant: selects the palette for multi-palette themes
-    ///   (currently only `.cyberpunk`). Ignored elsewhere.
-    public static func theme(_ kind: ThemeKind, variant: String? = nil) -> Theme {
+    public static func theme(_ kind: ThemeKind) -> Theme {
         switch kind {
         case .classic:
             return Theme(
@@ -241,22 +175,38 @@ public struct Theme: Sendable, Equatable {
                 showsHeader: false, showsStreak: false,
                 usesDottedDividers: false, showsSlotChips: true
             )
-        case .cyberpunk:
-            let v = CyberVariant(rawValue: variant ?? "") ?? .synth
-            let p = v.palette
+        case .synth, .matrix, .sunset, .ice:
+            // Neon family: shared skeleton (Carbon Bar lineage), distinct palettes.
+            let p: (bgTop: String, bgBottom: String, border: String, text: String,
+                    accent: String, secondary: String, streakSoft: String, streakBright: String,
+                    onSel: String)
+            switch kind {
+            case .synth:
+                p = ("#0B0716", "#0A0612", "#E879F926", "#EAF2FF",
+                     "#22D3EE", "#F472B6", "#F472B6", "#22D3EE", "#04121A")
+            case .matrix:
+                p = ("#050805", "#050805", "#4ADE802E", "#E8FFE9",
+                     "#4ADE80", "#A3E635", "#A3E635", "#4ADE80", "#04140A")
+            case .sunset:
+                p = ("#12081F", "#1A0B2E", "#FF2E8838", "#FFE9F4",
+                     "#FF2E88", "#FF8A3D", "#FF8A3D", "#FF2E88", "#1A0410")
+            default: // .ice
+                p = ("#04101C", "#030A12", "#00F0FF2E", "#E8FDFF",
+                     "#00F0FF", "#7DD3FC", "#00F0FF", "#E0FEFF", "#041018")
+            }
             return Theme(
-                id: .cyberpunk,
+                id: kind,
                 usesMaterial: false,
-                bgTopHex: p.bgTopHex, bgBottomHex: p.bgBottomHex,
-                borderHex: p.borderHex, borderWidth: 1, cornerRadius: 8,
+                bgTopHex: p.bgTop, bgBottomHex: p.bgBottom,
+                borderHex: p.border, borderWidth: 1, cornerRadius: 8,
                 queryFontSize: 25, queryFontWeight: "medium", queryIsMono: true,
                 nameFontSize: 17, nameFontWeight: "medium", nameIsMono: false,
                 pathFontSize: 12, pathIsMono: true, pathAlpha: 0.5, iconSize: 28,
-                textHex: p.textHex, textDimAlpha: 0.5,
-                accentHex: p.accentHex, calculatorAccentHex: p.secondaryHex,
-                streakSoftHex: p.streakSoftHex, streakBrightHex: p.streakBrightHex,
+                textHex: p.text, textDimAlpha: 0.5,
+                accentHex: p.accent, calculatorAccentHex: p.secondary,
+                streakSoftHex: p.streakSoft, streakBrightHex: p.streakBright,
                 selectionKind: .accentBar,
-                selectionHex: p.accentHex, onSelectionHex: "#04121A", selectionTintAlpha: 0.10,
+                selectionHex: p.accent, onSelectionHex: p.onSel, selectionTintAlpha: 0.10,
                 showsFooter: true, showsSearchIcon: false,
                 showsHeader: false, showsStreak: true,
                 usesDottedDividers: false, showsSlotChips: true

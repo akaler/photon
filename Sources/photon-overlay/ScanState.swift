@@ -179,35 +179,20 @@ final class ScanState: ObservableObject {
     /// Launch history powering the home screen and search boosts.
     let history: HistoryStore
 
-    /// Active color scheme for multi-palette themes (Cyberpunk).
-    @Published private(set) var cyberVariant: CyberVariant = .synth
-
     init(history: HistoryStore = HistoryStore()) {
         self.history = history
         let config = Config.load()
-        self.cyberVariant = CyberVariant(rawValue: config.cyberVariant ?? "") ?? .synth
-        self.theme = Theme.theme(config.resolvedTheme, variant: config.cyberVariant)
+        self.theme = Theme.theme(config.resolvedTheme)
         self.scanFolders = config.scanFolders
         self.hotkeyUsesCommand = config.usesCommandSpace
     }
 
     /// Switch skins (live) and persist the choice.
     func setTheme(_ kind: ThemeKind) {
-        theme = Theme.theme(kind, variant: cyberVariant.rawValue)
+        theme = Theme.theme(kind)
         var config = Config.load()
         config.themeID = kind
         config.save()
-    }
-
-    /// Switch the Cyberpunk color scheme (live) and persist it.
-    func setCyberVariant(_ variant: CyberVariant) {
-        cyberVariant = variant
-        var config = Config.load()
-        config.cyberVariant = variant.rawValue
-        config.save()
-        if theme.id == .cyberpunk {
-            theme = Theme.theme(.cyberpunk, variant: variant.rawValue)
-        }
     }
 
     /// The empty-query home screen: the user's most frequently/recently used
