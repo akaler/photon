@@ -7,10 +7,14 @@ public struct Config: Codable {
     /// Active overlay skin. Optional for backward compatibility with
     /// pre-existing config files; nil decodes as the Carbon Solid default.
     public var themeID: ThemeKind?
+    /// When true, the overlay trigger is ⌘Space instead of the default ⌥Space.
+    /// Optional so older configs decode unchanged (nil = ⌥Space).
+    public var hotkeyUsesCommand: Bool?
 
-    public init(scanFolders: [ScanFolder] = [], themeID: ThemeKind? = nil) {
+    public init(scanFolders: [ScanFolder] = [], themeID: ThemeKind? = nil, hotkeyUsesCommand: Bool? = nil) {
         self.scanFolders = scanFolders
         self.themeID = themeID
+        self.hotkeyUsesCommand = hotkeyUsesCommand
     }
 
     // MARK: - Codable (backward compatible with pre-ScanFolder configs)
@@ -18,6 +22,7 @@ public struct Config: Codable {
     private enum CodingKeys: String, CodingKey {
         case scanFolders
         case themeID
+        case hotkeyUsesCommand
         // legacy keys
         case selectedScopes
         case customScopes
@@ -41,12 +46,19 @@ public struct Config: Codable {
         }
 
         self.themeID = try c.decodeIfPresent(ThemeKind?.self, forKey: .themeID) ?? nil
+        self.hotkeyUsesCommand = try c.decodeIfPresent(Bool.self, forKey: .hotkeyUsesCommand) ?? nil
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(scanFolders, forKey: .scanFolders)
         try c.encodeIfPresent(themeID, forKey: .themeID)
+        try c.encodeIfPresent(hotkeyUsesCommand, forKey: .hotkeyUsesCommand)
+    }
+
+    /// The resolved trigger modifier: ⌘Space when opted in, otherwise ⌥Space.
+    public var usesCommandSpace: Bool {
+        hotkeyUsesCommand == true
     }
 
     // MARK: - Persistence

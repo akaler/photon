@@ -401,4 +401,24 @@ final class ScanState: ObservableObject {
             scan()
         }
     }
+
+    // MARK: - Hotkey
+
+    /// Posted (on the main queue) after the trigger preference changes, so the
+    /// app delegate can re-register the Carbon hotkey without a relaunch.
+    static let hotkeyChangedNotification = Notification.Name("photon.hotkeyChanged")
+
+    /// Whether ⌘Space (instead of ⌥Space) currently triggers the overlay.
+    var hotkeyUsesCommand: Bool {
+        Config.load().usesCommandSpace
+    }
+
+    /// Flip the trigger between ⌘Space and ⌥Space, persist, and notify the
+    /// app delegate to re-register the hotkey live.
+    func setHotkeyUsesCommand(_ enabled: Bool) {
+        var config = Config.load()
+        config.hotkeyUsesCommand = enabled
+        config.save()
+        NotificationCenter.default.post(name: Self.hotkeyChangedNotification, object: nil)
+    }
 }

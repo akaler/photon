@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import PhotonCore
 
 // MARK: - Configuration
 // ⌥+Space toggles the overlay. To change the key, edit `hotkeyKeyCode` and
@@ -33,6 +34,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FileHandle.standardError.write("[photon-overlay] didFinishLaunching\n".data(using: .utf8)!)
+
+        // Re-register the hotkey when the user flips the trigger in Settings.
+        NotificationCenter.default.addObserver(
+            forName: ScanState.hotkeyChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.reregisterHotkey() }
+        }
 
         let panel = OverlayPanel()
         panel.onClose = { [weak self] in self?.hide() }
@@ -111,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let status = RegisterEventHotKey(
             UInt32(hotkeyKeyCode),
-            UInt32(optionKey),
+            Config.load().usesCommandSpace ? UInt32(cmdKey) : UInt32(optionKey),
             carbonHotkeyID,
             GetApplicationEventTarget(),
             0,
@@ -120,8 +130,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if status != noErr {
             FileHandle.standardError.write("[photon-overlay] RegisterEventHotKey failed: \(status)\n".data(using: .utf8)!)
         } else {
-            FileHandle.standardError.write("[photon-overlay] hotkey registered (⌥+Space)\n".data(using: .utf8)!)
+            let label = Config.load().usesCommandSpace ? "⌘+Space" : "⌥+Space"
+            FileHandle.standardError.write("[photon-overlay] hotkey registered (\(label))\n".data(using: .utf8)!)
         }
+    }
+
+    /// Re-register the hotkey after the user flips the trigger in Settings.
+    private func reregisterHotkey() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        registerHotkey()
     }
 
     // MARK: Show / hide

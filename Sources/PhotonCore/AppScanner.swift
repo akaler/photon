@@ -8,6 +8,13 @@ public class AppScanner {
         "\(FileManager.default.homeDirectoryForCurrentUser.path)/Applications",
     ]
 
+    /// Core-services apps that live outside the standard app folders and are
+    /// therefore missed by the directory scan. Finder is the obvious one —
+    /// every Mac has it at this exact path.
+    public let explicitApps = [
+        "/System/Library/CoreServices/Finder.app",
+    ]
+
     public init() {}
 
     /// Scan system apps plus any additional scope directories.
@@ -15,6 +22,13 @@ public class AppScanner {
     /// - Parameter showProgress: Print progress to stdout (default: false)
     public func scan(extraScopes: [URL] = [], showProgress: Bool = false) -> [App] {
         var results: [App] = []
+
+        // Core-services apps first (Finder etc.) — always present on macOS.
+        for path in explicitApps {
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+            let url = URL(fileURLWithPath: path)
+            results.append(App(name: url.deletingPathExtension().lastPathComponent, path: url))
+        }
 
         var allLocations: [String] = locations
         for scope in extraScopes {

@@ -192,12 +192,13 @@ struct OverlayView: View {
         case theme(ThemeKind)
         case folder(Int)     // index into state.scanFolders
         case addFolder
+        case hotkey
     }
 
     private var settingsRows: [SettingsItem] {
         ThemeKind.allCases.map(SettingsItem.theme)
             + state.scanFolders.indices.map(SettingsItem.folder)
-            + [.addFolder]
+            + [.addFolder, .hotkey]
     }
 
     private var selectedSettingsRow: SettingsItem? {
@@ -229,6 +230,8 @@ struct OverlayView: View {
             editingCap = false
         case .addFolder:
             addFolderViaPicker()
+        case .hotkey:
+            state.setHotkeyUsesCommand(!state.hotkeyUsesCommand)
         case nil:
             break
         }
@@ -484,11 +487,27 @@ struct OverlayView: View {
                             isSelected: selectedSettingsRow == .addFolder,
                             onSelect: {
                                 // Click = activate (open picker), same as Return.
-                                settingsIndex = settingsRows.count - 1
+                                settingsIndex = settingsRows.count - 2
                                 addFolderViaPicker()
                             }
                         )
-                        .id(settingsRows.count - 1)
+                        .id(settingsRows.firstIndex(of: .addFolder) ?? 0)
+
+                        settingsSectionHeader("Hotkey")
+
+                        SettingsRow(
+                            title: "⌘Space trigger",
+                            subtitle: state.hotkeyUsesCommand
+                                ? "on · Spotlight shortcut goes to Photon"
+                                : "off · using ⌥Space (default)",
+                            theme: theme,
+                            isSelected: selectedSettingsRow == .hotkey,
+                            onSelect: {
+                                settingsIndex = settingsRows.count - 1
+                                state.setHotkeyUsesCommand(!state.hotkeyUsesCommand)
+                            }
+                        )
+                        .id(settingsRows.firstIndex(of: .hotkey) ?? 0)
                     }
                 }
                 .onChange(of: settingsIndex) { _, idx in
@@ -795,14 +814,6 @@ private struct SearchBar: View {
                             .allowsHitTesting(false)
                     }
                 }
-
-            if !text.isEmpty {
-                Button(action: { text = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Color(hex: theme.textHex).opacity(0.35))
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)

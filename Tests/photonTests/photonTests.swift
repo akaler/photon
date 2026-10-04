@@ -474,3 +474,9 @@ private func makeTempFile(_ name: String) -> URL {
     let files = capped.filter { $0.kind == .file }
     #expect(files.count == 3)
 }
+
+@Test func appScanner_includesCoreServicesApps() {
+    let apps = AppScanner().scan()
+    #expect(apps.contains { $0.name == "Finder" },
+            "Finder lives in CoreServices, outside the standard app folders")
+}
