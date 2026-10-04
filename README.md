@@ -6,9 +6,7 @@
 
 ## Why
 
-Built by one person for the thing most launchers forget: *speed*. No background
-agent, no network, no bloat — it indexes your apps once, then searches from
-memory. Keystrokes in, results out.
+Spotlight has now become an everything app. Alfred's best features are behind a paywall. This free open-source app offers speed and simplicity - just index apps and the folders you need. 
 
 It's a small project by one developer. Found a bug? Want a feature? This is open
 software — clone it, run `swift build`, and **feel free to use your own agents
