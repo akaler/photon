@@ -23,11 +23,25 @@ swift run photon-overlay
 ## Features
 
 - **Apps always searchable** — no setup, no permissions on first run
-- **Six themes** — from flat light to full neon, switchable live in Settings
+- **Eight themes** — from flat light to full neon, switchable live in Settings
 - **Files opt-in** — add folders in Settings via the native picker; access is
   granted per-folder (no broad permission dialogs)
 - **Calculator** — type `2^10`, Enter copies the answer
 - **Instant slots** — ⌘1–9 launches the first rows instantly
+
+## Themes
+
+Every animated theme has its own living background — rendered as chunky pixel art on a tiny
+90×58 bitmap at 15fps, so it stays under 1% CPU.
+
+<p>
+<img src="screenshots/matrix.gif" width="48%" alt="Acid Matrix — falling code">
+<img src="screenshots/ice.gif" width="48%" alt="Ice Circuit — snowfall and accumulation">
+</p>
+<p>
+<img src="screenshots/sunset.gif" width="48%" alt="Synthwave Sunset — Miami grid">
+<img src="screenshots/city.gif" width="48%" alt="Neon City — skyline and neon signs">
+</p>
 
 ## Screenshots
 
