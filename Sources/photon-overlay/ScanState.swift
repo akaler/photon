@@ -10,6 +10,7 @@ public enum ResultKind {
     case app
     case file
     case directory
+    case calculator
 }
 
 public struct SearchResult: Identifiable, Hashable {
@@ -19,7 +20,19 @@ public struct SearchResult: Identifiable, Hashable {
     public let kind: ResultKind
     public let size: Int64?
     public let modificationDate: Date?
-    public let icon: NSImage?
+
+    /// Loads the icon for this result. Intended to be called once from
+    /// the SwiftUI view's `onAppear`, so icon fetching doesn't block rendering.
+    func makeIcon() -> NSImage? {
+        switch kind {
+        case .calculator:
+            return NSWorkspace.shared.icon(forFile: "/System/Applications/Calculator.app")
+        case .directory:
+            return NSWorkspace.shared.icon(forFile: path.path)
+        default:
+            return NSWorkspace.shared.iconScaled(forFile: path.path)
+        }
+    }
 
     public var displaySize: String? {
         guard let size else { return nil }
@@ -40,10 +53,18 @@ public struct SearchResult: Identifiable, Hashable {
 
     public var glyph: String {
         switch kind {
-        case .app:      return "🅰"
-        case .file:     return "📄"
-        case .directory: return "📁"
+        case .app:        return "🅰"
+        case .file:       return "📄"
+        case .directory:  return "📁"
+        case .calculator: return "🟰"
         }
+    }
+
+    /// The clipboard-ready numeric value for calculator results
+    /// (the display string without the leading `= `).
+    public var copyValue: String? {
+        guard kind == .calculator, name.hasPrefix("= ") else { return nil }
+        return String(name.dropFirst(2))
     }
 }
 
@@ -60,85 +81,79 @@ private extension NSWorkspace {
 
 public extension SearchResult {
     init(app: App) {
-        self.init(name: app.name, path: app.path, kind: .app, size: nil, modificationDate: nil,
-                  icon: NSWorkspace.shared.iconScaled(forFile: app.path.path))
+        self.init(name: app.name, path: app.path, kind: .app, size: nil, modificationDate: nil)
     }
 
     init(file: IndexedFile) {
-        let isDir = file.kind == .directory
         let resultKind: ResultKind = file.kind == .directory ? .directory : .file
         self.init(name: file.name, path: file.path, kind: resultKind,
-                  size: isDir ? nil : file.size,
-                  modificationDate: file.modificationDate,
-                  icon: NSWorkspace.shared.iconScaled(forFile: file.path.path))
+                  size: file.size,
+                  modificationDate: file.modificationDate)
+    }
+
+    /// Synthetic result for an evaluated expression, e.g. name `= 4`.
+    /// The path is never opened; it exists to satisfy the result model.
+    static func calculator(expression query: String) -> SearchResult? {
+        guard let value = PhotonCore.Calculator.evaluate(query) else { return nil }
+        return SearchResult(
+            name: PhotonCore.Calculator.displayString(for: value),
+            path: URL(string: "photon://calculator")!,
+            kind: .calculator,
+            size: nil,
+            modificationDate: nil
+        )
     }
 }
 
 // MARK: - Ranking
 
+fileprivate func rankScore(_ kind: ResultKind, by tier: ScoreTier) -> Int {
+    switch (tier, kind) {
+    case (.exact, .app):          return 1_500_000
+    case (.exact, .directory):    return 1_000_500
+    case (.exact, .file):         return   900_000
+
+    case (.prefix, .app):         return   250_000
+    case (.prefix, .directory):   return   200_000
+    case (.prefix, .file):        return   100_000
+
+    case (.contains, .app):       return    20_000
+    case (.contains, .directory): return    10_000
+    case (.contains, .file):      return     5_000
+
+    case (.path, .app):           return       1_500
+    case (.path, .directory):     return       1_000
+    case (.path, .file):          return         500
+
+    // Calculator results never go through the name-matching ranker; they are
+    // pinned to the top of the list by the caller.
+    case (_, .calculator):        return       0
+    }
+}
+
+private enum ScoreTier {
+    case exact, prefix, contains, path
+}
+
 extension SearchResult {
-    /// Higher is better. Match quality tier is primary; within each tier, kind
-    /// breaks ties: **apps > directories > files**. This means typing "app" or
-    /// "chrome" immediately surfaces the matching application before any similarly-
-    /// named directory or file.
-    ///
-    /// The ranking pipeline (priority order):
-    /// 1. Exact name match (case-insensitive)
-    /// 2. Prefix match (name starts with query via `hasPrefix`)
-    /// 3. Substring match (name contains query via `contains`)
-    /// 4. Path match (query appears in full path)
-    ///
-    /// Within every tier: app > directory > file, and closer-to-root paths win.
+    /// Higher is better. Used by external consumers (tests, etc.).
     static func score(_ result: SearchResult, query: String) -> Int {
         let q = query.lowercased()
         let name = result.name.lowercased()
 
-        // Tier 1: exact name match
         if name == q {
-            return rank(result.kind, by: .exact)
+            return rankScore(result.kind, by: .exact)
         }
-
-        // Tier 2: prefix match
         if name.hasPrefix(q) {
-            return rank(result.kind, by: .prefix) - name.count
+            return rankScore(result.kind, by: .prefix) - name.count
         }
-
-        // Tier 3: substring match
         if name.contains(q) {
-            return rank(result.kind, by: .contains) - name.count
+            return rankScore(result.kind, by: .contains) - name.count
         }
-
-        // Tier 4: path contains — last resort
         if result.path.path.lowercased().contains(q) {
-            return rank(result.kind, by: .path)
+            return rankScore(result.kind, by: .path)
         }
-
         return -1
-    }
-
-    /// Base score for a given kind and tier. Apps beat dirs beat files everywhere.
-    private static func rank(_ kind: ResultKind, by tier: ScoreTier) -> Int {
-        switch (tier, kind) {
-        case (.exact, .app):          return 1_500_000
-        case (.exact, .directory):    return 1_000_500
-        case (.exact, .file):         return   900_000
-
-        case (.prefix, .app):         return   250_000
-        case (.prefix, .directory):   return   200_000
-        case (.prefix, .file):        return   100_000
-
-        case (.contains, .app):       return    20_000
-        case (.contains, .directory): return    10_000
-        case (.contains, .file):      return     5_000
-
-        case (.path, .app):           return       1_500
-        case (.path, .directory):     return       1_000
-        case (.path, .file):          return         500
-        }
-    }
-
-    private enum ScoreTier {
-        case exact, prefix, contains, path
     }
 }
 
@@ -150,27 +165,128 @@ final class ScanState: ObservableObject {
     @Published var query: String = ""
     @Published private(set) var isScanning: Bool = false
     @Published var selectedIndex: Int = 0
+    @Published private(set) var theme: Theme
+    /// The folders the user has opted into for file search (apps-only when empty).
+    @Published private(set) var scanFolders: [ScanFolder] = []
+    /// Bumped every time the overlay reopens, so the view can re-assert
+    /// search-field focus (a panel's focus doesn't survive orderOut).
+    @Published private(set) var focusGeneration = 0
+
+    func notifyReopen() {
+        focusGeneration += 1
+    }
+
+    /// Launch history powering the home screen and search boosts.
+    let history: HistoryStore
+
+    init(history: HistoryStore = HistoryStore()) {
+        self.history = history
+        let config = Config.load()
+        self.theme = Theme.theme(config.resolvedTheme)
+        self.scanFolders = config.scanFolders
+    }
+
+    /// Switch skins (live) and persist the choice.
+    func setTheme(_ kind: ThemeKind) {
+        theme = Theme.theme(kind)
+        var config = Config.load()
+        config.themeID = kind
+        config.save()
+    }
+
+    /// The empty-query home screen: the user's most frequently/recently used
+    /// items first (capped), backfilled with apps so it never looks broken.
+    /// Files without history are deliberately excluded — no alphabetical dump.
+    private var homeResults: [SearchResult] {
+        let cap = 15
+        var seen = Set<URL>()
+
+        // History items ranked by frecency, then recency, then name.
+        var withHistory: [(SearchResult, Double, Date)] = []
+        for r in results where !seen.contains(r.path) {
+            guard let entry = history.entry(for: r.path.path) else { continue }
+            seen.insert(r.path)
+            withHistory.append((r, HistoryStore.score(launchCount: entry.launchCount,
+                                                       lastLaunchedAt: entry.lastLaunchedAt),
+                                entry.lastLaunchedAt))
+        }
+        withHistory.sort {
+            if $0.1 != $1.1 { return $0.1 > $1.1 }
+            if $0.2 != $1.2 { return $0.2 > $1.2 }
+            return $0.0.name.localizedCaseInsensitiveCompare($1.0.name) == .orderedAscending
+        }
+        var out = withHistory.prefix(cap).map { $0.0 }
+
+        // Backfill remaining rows with apps that have no history.
+        if out.count < cap {
+            for r in results where out.count < cap {
+                guard r.kind == .app, !seen.contains(r.path) else { continue }
+                seen.insert(r.path)
+                out.append(r)
+            }
+        }
+        return out
+    }
 
     /// Computed + ranked view of the list for the current query.
+    /// Inlined here to avoid file-level globals (concurrency-safety).
     var visibleResults: [SearchResult] {
-        guard !query.isEmpty else { return results }
-        return results
-            .compactMap { r -> (SearchResult, Int)? in
-                let s = SearchResult.score(r, query: query)
-                return s > 0 ? (r, s) : nil
+        // A query that fully parses as an arithmetic expression always gets a
+        // pinned calculator row, independent of the app/file index.
+        let calculatorResult = SearchResult.calculator(expression: query)
+
+        guard !query.isEmpty else { return homeResults }
+        guard !results.isEmpty else { return calculatorResult.map { [$0] } ?? [] }
+
+        let q = query.lowercased()
+        let ranked = results
+            .compactMap { r -> (SearchResult, Double)? in
+                let name = r.name.lowercased()
+
+                let tierScore: Int
+                if name == q {
+                    tierScore = rankScore(r.kind, by: .exact)
+                } else if name.hasPrefix(q) {
+                    tierScore = rankScore(r.kind, by: .prefix) - name.count
+                } else if name.contains(q) {
+                    tierScore = rankScore(r.kind, by: .contains) - name.count
+                } else if r.path.path.lowercased().contains(q) {
+                    tierScore = rankScore(r.kind, by: .path)
+                } else {
+                    return nil
+                }
+
+                // Bounded frecency boost (max 2x): reorders within a match
+                // tier but can never flip across tiers. No history → 1.0.
+                let boost = 1.0 + min(history.frecencyScore(for: r.path.path), 1.0)
+                return (r, Double(tierScore) * boost)
             }
             .sorted { a, b in
-                if a.1 != b.1 { return a.1 > b.1 }                // higher score first
-                if a.0.pathDepth != b.0.pathDepth { return a.0.pathDepth < b.0.pathDepth }  // fewer path components first
-                return a.0.name < b.0.name                         // alphabetical tiebreak
+                if a.1 != b.1 { return a.1 > b.1 }
+                if a.0.pathDepth != b.0.pathDepth { return a.0.pathDepth < b.0.pathDepth }
+                return a.0.name < b.0.name
             }
             .map { $0.0 }
+
+        if let calculatorResult {
+            return [calculatorResult] + ranked
+        }
+        return ranked
     }
 
     var selectedResult: SearchResult? {
         let v = visibleResults
         guard v.indices.contains(selectedIndex) else { return nil }
         return v[selectedIndex]
+    }
+
+    /// Submit the nth visible result via keyboard slot (⌘1–9).
+    /// Returns the result to submit, or nil when the slot is empty.
+    func slotResult(_ number: Int) -> SearchResult? {
+        guard (1...9).contains(number) else { return nil }
+        let v = visibleResults
+        guard v.indices.contains(number - 1) else { return nil }
+        return v[number - 1]
     }
 
     func clampSelection() {
@@ -207,27 +323,42 @@ final class ScanState: ObservableObject {
 
     // MARK: - Scanning
 
+    /// Record a launch and refresh the list: history itself isn't observable,
+    /// so without this the home screen wouldn't reorder until the next
+    /// query-driven re-render (or relaunch).
+    func recordLaunch(path: String) {
+        history.record(path: path)
+        objectWillChange.send()
+    }
+
+    /// Internal injection point for ranking tests; production populates
+    /// results exclusively via `scan()`.
+    func injectResults(_ newResults: [SearchResult]) {
+        results = newResults
+    }
+
     func scan() {
         guard !isScanning else { return }
         isScanning = true
         Task { @MainActor in
-            var config = Config.load()
-            if config.selectedScopes.isEmpty { config.selectedScopes = Scope.allCases }
-            let scopes = config.allScopes
+            let config = Config.load()
+            // Apps always. Folders only when explicitly opted in — an empty
+            // list means apps-only, never an implicit all-scope scan.
+            let folders = config.availableScanFolders
 
             var combined: [SearchResult] = []
 
             // Apps first (Spotlight-like: apps surface near the top by name match).
             let apps = await Task.detached(priority: .userInitiated) {
-                AppScanner().scan(extraScopes: scopes)
+                AppScanner().scan()
             }.value
             combined.append(contentsOf: apps.map(SearchResult.init(app:)))
 
             let filesByScope = await Task.detached(priority: .userInitiated) {
                 let scanner = FolderScanner()
                 var files: [IndexedFile] = []
-                for scope in scopes {
-                    files.append(contentsOf: scanner.scan(url: scope))
+                for folder in folders {
+                    files.append(contentsOf: scanner.scan(url: folder.path, depth: folder.depth, fileCap: folder.fileCap))
                 }
                 return files
             }.value
@@ -236,6 +367,38 @@ final class ScanState: ObservableObject {
             self.results = combined.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             self.isScanning = false
             self.selectedIndex = 0
+        }
+    }
+
+    // MARK: - Scan folder management
+
+    /// Add a folder (granted via the native picker), persist, and re-scan.
+    func addScanFolder(_ folder: ScanFolder) {
+        var config = Config.load()
+        guard !config.scanFolders.contains(where: { $0.path == folder.path }) else { return }
+        config.scanFolders.append(folder)
+        config.save()
+        scanFolders = config.scanFolders
+        scan()
+    }
+
+    /// Remove a folder, persist, and re-scan.
+    func removeScanFolder(_ folder: ScanFolder) {
+        var config = Config.load()
+        config.scanFolders.removeAll { $0.path == folder.path }
+        config.save()
+        scanFolders = config.scanFolders
+        scan()
+    }
+
+    /// Update a folder's limits (depth/cap), persist, and re-scan.
+    func updateScanFolder(_ folder: ScanFolder) {
+        var config = Config.load()
+        if let idx = config.scanFolders.firstIndex(where: { $0.path == folder.path }) {
+            config.scanFolders[idx] = folder
+            config.save()
+            scanFolders = config.scanFolders
+            scan()
         }
     }
 }

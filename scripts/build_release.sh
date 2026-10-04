@@ -95,17 +95,30 @@ PLIST
 # A PkgInfo file is conventional but optional; harmless to include.
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
 
-# ── 4. Register the app with Launch Services (icon shows immediately) ───────
+# ── 4. Sign with a stable identity ───────────────────────────────────────────
+# Self-signed "Photon Development" cert (login keychain) gives a STABLE
+# signature, so macOS TCC folder-access grants survive rebuilds (an adhoc/
+# linker-signed binary gets a new CDHash every build = new app = permission
+# prompts + empty scan results). Falls back to adhoc if the cert is missing.
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "Photon Development"; then
+  echo "› Signing with stable identity 'Photon Development'"
+  codesign --force --deep --sign "Photon Development" "$APP_DIR"
+else
+  echo "⚠️  Stable identity 'Photon Development' not found — adhoc signing (TCC grants will reset on each build)"
+  codesign --force --deep --sign - "$APP_DIR"
+fi
+
+# ── 5. Register the app with Launch Services (icon shows immediately) ───────
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
   -f "$APP_DIR" 2>/dev/null || true
 
-# ── 5. Zip it up ─────────────────────────────────────────────────────────────
+# ── 6. Zip it up ─────────────────────────────────────────────────────────────
 echo "› Zipping → $ZIP_PATH"
 rm -f "$ZIP_PATH"
 # Use ditto for a Mac-friendly zip that preserves resource forks / icon.
 ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
 
-# ── 6. Done ──────────────────────────────────────────────────────────────────
+# ── 7. Done ──────────────────────────────────────────────────────────────────
 ZIP_SIZE="$(du -h "$ZIP_PATH" | cut -f1)"
 echo
 echo "✅ Built release v${VERSION}"

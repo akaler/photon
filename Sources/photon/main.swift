@@ -7,22 +7,22 @@ func main() {
     print("╚═══════════════════════════════╝")
     print()
 
-    // Start with default: Desktop, Documents, Downloads all preselected
+    // Apps are always indexed. Folders are opt-in; start from current config.
     var config = Config.load()
-    config.selectedScopes = Scope.allCases
 
     // Present scope selection menu
-    print("Select scopes to index:")
+    print("Select folders to index for file search (apps are always indexed):")
     print()
 
-    for (index, scope) in Scope.allCases.enumerated() {
-        let star = config.selectedScopes.contains(scope) ? "✓" : " "
-        print("  [\(star)] \(index + 1). \(scope.label) (\(scope.path.path))")
+    let standard = Scope.allCases
+    for (index, scope) in standard.enumerated() {
+        let checked = config.scanFolders.contains { $0.path == scope.path } ? "✓" : " "
+        print("  [\(checked)] \(index + 1). \(scope.label) (\(scope.path.path))")
     }
 
     print()
     print("  [c] Custom path")
-    print("  [a] All scopes")
+    print("  [a] All standard folders")
     print("  [u] Untoggle currently selected")
     print()
     print("Enter choice (or press Enter to continue): ", terminator: "")
@@ -32,17 +32,21 @@ func main() {
 
         switch choice {
         case "1":
-            toggleScope(scope: .downloads, config: &config)
+            toggleFolder(scope: .downloads, config: &config)
         case "2":
-            toggleScope(scope: .documents, config: &config)
+            toggleFolder(scope: .documents, config: &config)
         case "3":
-            toggleScope(scope: .desktop, config: &config)
+            toggleFolder(scope: .desktop, config: &config)
         case "c", "custom":
-            addCustomScope(config: &config)
+            addCustomFolder(config: &config)
         case "a", "all":
-            config.selectedScopes = Scope.allCases
+            for scope in Scope.allCases {
+                if !config.scanFolders.contains(where: { $0.path == scope.path }) {
+                    config.scanFolders.append(ScanFolder(name: scope.label, path: scope.path))
+                }
+            }
         case "u", "untoggle":
-            showSelectedScopes(config: config)
+            showSelectedFolders(config: config)
         default:
             break
         }
@@ -52,7 +56,7 @@ func main() {
     config.save()
 
     // Build final list of directories to scan
-    let allPaths = config.allScopes
+    let folders = config.availableScanFolders
 
     print()
     print()
@@ -60,20 +64,20 @@ func main() {
     print("System apps:    /System/Applications")
     print()
 
-    if !allPaths.isEmpty {
-        print("User scopes:")
-        for path in allPaths {
-            let available = FileManager.default.fileExists(atPath: path.path) ? "✓" : "⚠"
-            print("  [\(available)] \(path.path)")
+    if !folders.isEmpty {
+        print("User folders:")
+        for folder in folders {
+            let available = FileManager.default.fileExists(atPath: folder.path.path) ? "✓" : "⚠"
+            print("  [\(available)] \(folder.name)  (depth \(folder.depth), cap \(folder.fileCap))  \(folder.path.path)")
         }
     } else {
-        print("User scopes:    (none selected)")
+        print("User folders:    (none — apps only)")
     }
     print()
 
     // Run both scans
     print("─── Scanning Apps ───")
-    let apps = AppScanner().scan(extraScopes: allPaths, showProgress: true)
+    let apps = AppScanner().scan()
     print("Found \(apps.count) applications")
 
     print()
@@ -82,13 +86,13 @@ func main() {
     let folderScanner = FolderScanner()
     var allFiles: [IndexedFile] = []
 
-    for path in allPaths {
-        let files = folderScanner.scan(url: path, showProgress: true)
+    for folder in folders {
+        let files = folderScanner.scan(url: folder.path, depth: folder.depth, fileCap: folder.fileCap, showProgress: true)
         allFiles.append(contentsOf: files)
     }
 
     if allFiles.isEmpty {
-        print("No files found in selected scopes.")
+        print("No files found in selected folders.")
     } else {
         print("Found \(allFiles.count) files:\n")
         let sorted = allFiles.sorted { $0.name.lowercased() < $1.name.lowercased() }
@@ -103,18 +107,18 @@ func main() {
 
 // MARK: - Helpers
 
-func toggleScope(scope: Scope, config: inout Config) {
-    if config.selectedScopes.contains(scope) {
-        config.selectedScopes.removeAll { $0 == scope }
-        print("  ✗ Deselected \(scope.label)")
+func toggleFolder(scope: Scope, config: inout Config) {
+    if let idx = config.scanFolders.firstIndex(where: { $0.path == scope.path }) {
+        config.scanFolders.remove(at: idx)
+        print("  ✗ Removed \(scope.label)")
     } else {
-        config.selectedScopes.append(scope)
-        print("  ✓ Selected \(scope.label)")
+        config.scanFolders.append(ScanFolder(name: scope.label, path: scope.path))
+        print("  ✓ Added \(scope.label)")
         print("    → \(scope.path.path)")
     }
 }
 
-func addCustomScope(config: inout Config) {
+func addCustomFolder(config: inout Config) {
     print()
     print("Enter path to add: ", terminator: "")
     guard let pathInput = readLine() else { return }
@@ -128,19 +132,15 @@ func addCustomScope(config: inout Config) {
     }
 
     let name = url.lastPathComponent
-    let custom = CustomScope(name: name, path: url)
-    config.customScopes.append(custom)
-    print("  ✓ Added custom scope: \(custom.name) → \(custom.path.path)")
+    config.scanFolders.append(ScanFolder(name: name, path: url))
+    print("  ✓ Added folder: \(name) → \(url.path)")
 }
 
-func showSelectedScopes(config: Config) {
+func showSelectedFolders(config: Config) {
     print()
-    print("Selected scopes:")
-    for scope in config.selectedScopes {
-        print("  • \(scope.label) (\(scope.path.path))")
-    }
-    for scope in config.customScopes {
-        print("  • \(scope.name) (\(scope.path.path))")
+    print("Selected folders:")
+    for folder in config.scanFolders {
+        print("  • \(folder.name) (\(folder.path.path))  depth \(folder.depth), cap \(folder.fileCap)")
     }
 }
 

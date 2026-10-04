@@ -36,6 +36,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Testing", package: "swift-testing"),
                 "PhotonCore",
+                "photon-overlay",
             ]
         ),
     ],

@@ -1,12 +1,52 @@
 import Foundation
 
 public struct Config: Codable {
-    public var selectedScopes: [Scope]
-    public var customScopes: [CustomScope]
+    /// Explicit opt-in list of folders to index for file search. Empty by
+    /// default (apps-only). Never implicitly falls back to "all scopes".
+    public var scanFolders: [ScanFolder]
+    /// Active overlay skin. Optional for backward compatibility with
+    /// pre-existing config files; nil decodes as the Carbon Solid default.
+    public var themeID: ThemeKind?
 
-    public init(selectedScopes: [Scope] = [], customScopes: [CustomScope] = []) {
-        self.selectedScopes = selectedScopes
-        self.customScopes = customScopes
+    public init(scanFolders: [ScanFolder] = [], themeID: ThemeKind? = nil) {
+        self.scanFolders = scanFolders
+        self.themeID = themeID
+    }
+
+    // MARK: - Codable (backward compatible with pre-ScanFolder configs)
+
+    private enum CodingKeys: String, CodingKey {
+        case scanFolders
+        case themeID
+        // legacy keys
+        case selectedScopes
+        case customScopes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        if let folders = try c.decodeIfPresent([ScanFolder].self, forKey: .scanFolders) {
+            self.scanFolders = folders
+        } else {
+            // Legacy config: selectedScopes (predefined) + customScopes.
+            var folders: [ScanFolder] = []
+            if let scopes = try c.decodeIfPresent([Scope].self, forKey: .selectedScopes) {
+                folders += scopes.map { ScanFolder(name: $0.label, path: $0.path) }
+            }
+            if let customs = try c.decodeIfPresent([CustomScope].self, forKey: .customScopes) {
+                folders += customs.map { ScanFolder(name: $0.name, path: $0.path) }
+            }
+            self.scanFolders = folders
+        }
+
+        self.themeID = try c.decodeIfPresent(ThemeKind?.self, forKey: .themeID) ?? nil
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(scanFolders, forKey: .scanFolders)
+        try c.encodeIfPresent(themeID, forKey: .themeID)
     }
 
     // MARK: - Persistence
@@ -31,6 +71,11 @@ public struct Config: Codable {
         }
     }
 
+    /// The active theme, defaulting to Carbon Solid when unset.
+    public var resolvedTheme: ThemeKind {
+        themeID ?? .carbonSolid
+    }
+
     public func save() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -39,11 +84,10 @@ public struct Config: Codable {
         }
     }
 
-    // MARK: - All resolved paths
+    // MARK: - Folders
 
-    public var allScopes: [URL] {
-        let predefined = selectedScopes.map { $0.path }
-        let custom = customScopes.filter { $0.isAvailable }.map { $0.path }
-        return predefined + custom
+    /// The folders available to scan (existing on disk), each with its limits.
+    public var availableScanFolders: [ScanFolder] {
+        scanFolders.filter { $0.isAvailable }
     }
 }

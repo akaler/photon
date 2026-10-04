@@ -40,6 +40,20 @@ public class AppScanner {
                 for name in contents {
                     collectApp(from: name, location: location) { results.append($0) }
                 }
+
+                // One-level recursion so apps in subfolders are picked up,
+                // e.g. /System/Applications/Utilities/Terminal.app
+                for name in contents {
+                    let subPath = "\(location)/\(name)"
+                    var isDir: ObjCBool = false
+                    guard FileManager.default.fileExists(atPath: subPath, isDirectory: &isDir),
+                          isDir.boolValue, !name.hasSuffix(".app") else { continue }
+                    if let nested = try? FileManager.default.contentsOfDirectory(atPath: subPath) {
+                        for nestedName in nested {
+                            collectApp(from: nestedName, location: subPath) { results.append($0) }
+                        }
+                    }
+                }
             } catch {
                 if showProgress { print("  error: \(error)") }
             }
