@@ -3,7 +3,6 @@ import Foundation
 /// The selectable skins for the Photon overlay.
 public enum ThemeKind: String, Codable, CaseIterable, Sendable {
     case classic
-    case carbonBar
     case carbonSolid
     case schematic
     case paper
@@ -15,7 +14,6 @@ public enum ThemeKind: String, Codable, CaseIterable, Sendable {
     public var displayName: String {
         switch self {
         case .classic:     return "Classic"
-        case .carbonBar:   return "Carbon Bar"
         case .carbonSolid: return "Carbon Solid"
         case .schematic:   return "Schematic"
         case .paper:       return "Paper"
@@ -103,24 +101,6 @@ public struct Theme: Sendable, Equatable {
                 showsHeader: false, showsStreak: false,
                 usesDottedDividers: false, showsSlotChips: false
             )
-        case .carbonBar:
-            return Theme(
-                id: .carbonBar,
-                usesMaterial: false,
-                bgTopHex: "#10131F", bgBottomHex: "#0B0E17",
-                borderHex: "#FFFFFF14", borderWidth: 1, cornerRadius: 10,
-                queryFontSize: 28, queryFontWeight: "medium", queryIsMono: false,
-                nameFontSize: 18, nameFontWeight: "medium", nameIsMono: false,
-                pathFontSize: 12.5, pathIsMono: true, pathAlpha: 0.5, iconSize: 28,
-                textHex: "#E6EDF5", textDimAlpha: 0.5,
-                accentHex: "#7DD3FC", calculatorAccentHex: "#7DD3FC",
-                streakSoftHex: "#7DD3FC", streakBrightHex: "#E0F2FE",
-                selectionKind: .accentBar,
-                selectionHex: "#7DD3FC", onSelectionHex: "#06121C", selectionTintAlpha: 0.09,
-                showsFooter: true, showsSearchIcon: false,
-                showsHeader: false, showsStreak: true,
-                usesDottedDividers: false, showsSlotChips: true
-            )
         case .carbonSolid:
             return Theme(
                 id: .carbonSolid,
@@ -176,7 +156,7 @@ public struct Theme: Sendable, Equatable {
                 usesDottedDividers: false, showsSlotChips: true
             )
         case .synth, .matrix, .sunset, .ice:
-            // Neon family: shared skeleton (Carbon Bar lineage), distinct palettes.
+            // Neon family: shared skeleton (accent-bar, streak, chips), distinct palettes.
             let p: (bgTop: String, bgBottom: String, border: String, text: String,
                     accent: String, secondary: String, streakSoft: String, streakBright: String,
                     onSel: String)

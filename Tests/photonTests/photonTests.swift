@@ -350,8 +350,8 @@ private func makeTempFile(_ name: String) -> URL {
 // MARK: - UI Themes & Slot Keys (add-ui-themes-and-slot-keys)
 
 @Test func themeRegistry_isCompleteAndValid() {
-    #expect(ThemeKind.allCases.count == 9)
-    #expect(Set(ThemeKind.allCases.map(\.rawValue)).count == 9)
+    #expect(ThemeKind.allCases.count == 8)
+    #expect(Set(ThemeKind.allCases.map(\.rawValue)).count == 8)
 
     let validHex = try! NSRegularExpression(pattern: "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$")
     for kind in ThemeKind.allCases {
