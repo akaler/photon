@@ -697,6 +697,11 @@ private struct ThemeRow: View {
             Text(kind.displayName)
                 .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
                 .foregroundStyle(settingsTextColor(theme, isSelected: isSelected))
+            // living badge for the themes that have background ambience
+            if kind == .matrix || kind == .ice {
+                PixelBadge(kind: kind)
+                    .frame(width: 16, height: 26)
+            }
             Spacer()
             // The applied theme (distinct from the cursor): a checkmark.
             if isActive {
@@ -714,6 +719,68 @@ private struct ThemeRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
+    }
+}
+
+// MARK: - PixelBadge (animated mini-logo for ambient themes)
+
+/// A tiny pixel-art preview of the theme's background ambience:
+/// falling code for Acid Matrix, drifting snow over a snowbank for
+/// Ice Circuit. TimelineView at 10fps — only alive while Settings is open.
+private struct PixelBadge: View {
+    let kind: ThemeKind
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+            Canvas { ctx, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let theme = Theme.theme(kind)
+                let accent = Color(hex: theme.accentHex)
+                let bright = Color(hex: theme.streakBrightHex)
+                let cell = size.width / 8
+                let rows = Int(size.height / cell)
+                let columns = [1, 4, 7]
+
+                for (i, cx) in columns.enumerated() {
+                    let speed = 1.1 + Double(i) * 0.5
+                    let phase = Double(i) * 3.7
+                    let travel = (t * speed + phase)
+                        .truncatingRemainder(dividingBy: Double(rows + 4))
+                    let headY = Int(travel) - 2
+
+                    if kind == .matrix {
+                        // falling code: bright head + short decaying trail
+                        for k in 0..<3 {
+                            let y = headY - k
+                            guard y >= 0, y < rows else { continue }
+                            let a: Double = k == 0 ? 1.0 : (k == 1 ? 0.5 : 0.25)
+                            let rect = CGRect(x: Double(cx) * cell, y: Double(y) * cell,
+                                              width: cell, height: cell)
+                            ctx.fill(Path(rect), with: .color((k == 0 ? bright : accent).opacity(a)))
+                        }
+                    } else {
+                        // snow: drifting flake with sideways sway
+                        let sway = sin(t * 1.6 + Double(i) * 2.1) * cell * 0.6
+                        let x = Double(cx) * cell + sway
+                        let y = Double(headY) * cell
+                        guard headY >= 0, headY < rows else { continue }
+                        let rect = CGRect(x: x, y: y, width: cell, height: cell)
+                        ctx.fill(Path(rect), with: .color(bright.opacity(0.95)))
+                    }
+                }
+
+                // Ice Circuit: a little snowbank line at the bottom
+                if kind == .ice {
+                    let rect = CGRect(x: 0, y: size.height - cell, width: size.width, height: cell)
+                    ctx.fill(Path(rect), with: .color(Color(hex: "#E0FEFF").opacity(0.85)))
+                    let nub = CGRect(x: cell * 3, y: size.height - cell * 2,
+                                     width: cell, height: cell)
+                    ctx.fill(Path(nub), with: .color(Color(hex: "#E0FEFF").opacity(0.5)))
+                }
+            }
+        }
+        .frame(width: 16, height: 26)
+        .accessibilityHidden(true)
     }
 }
 
