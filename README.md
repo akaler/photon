@@ -2,7 +2,7 @@
 
 **⌥Space, type, go.** A fast, offline Spotlight replacement for macOS.
 
-![Hero — Carbon Solid, apps-only home](screenshots/hero.png)
+![Photon — apps-only home, Acid Matrix](screenshots/hero.png)
 
 ## Why
 
@@ -23,7 +23,7 @@ swift run photon-overlay
 ## Features
 
 - **Apps always searchable** — no setup, no permissions on first run
-- **5 themes** — Classic, Carbon Bar, Carbon Solid, Schematic, Paper
+- **Six themes** — from flat light to full neon, switchable live in Settings
 - **Files opt-in** — add folders in Settings via the native picker; access is
   granted per-folder (no broad permission dialogs)
 - **Calculator** — type `2^10`, Enter copies the answer
@@ -34,10 +34,6 @@ swift run photon-overlay
 ![Search](screenshots/search.png)
 
 ![Calculator — type an expression, Enter copies it](screenshots/calc.png)
-
-![Settings — themes](screenshots/settings_themes.png)
-
-![Settings — scan folders](screenshots/settings_folders.png)
 
 ## Keys
 
