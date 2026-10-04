@@ -16,7 +16,7 @@ import PhotonCore
 ///   open starts clean. Zero cost while Photon sits in the background.
 /// * `accessibilityDisplayShouldReduceMotion` → renders one static frame.
 final class PixelAmbientView: NSView {
-    enum Effect: Equatable { case rain, snow }
+    enum Effect: Equatable { case rain, snow, miami }
 
     static let gridW = 90, gridH = 58
 
@@ -25,6 +25,7 @@ final class PixelAmbientView: NSView {
         switch kind {
         case .matrix: return .rain
         case .ice: return .snow
+        case .sunset: return .miami
         default: return nil
         }
     }
@@ -53,7 +54,13 @@ final class PixelAmbientView: NSView {
     private var colCooldown = 0
 
     private var flakes: [Flake] = []
-    private var heightMap = [Int](repeating: 0, count: gridW)           // settled snow per column
+    private var heightMap = [Int](repeating: 0, count: gridW)
+    // Miami Nights (Synthwave Sunset): stars + striped sun + perspective grid
+    private struct Star { var x: Int; var y: Int; var speed: Double; var phase: Double; var warm: Bool }
+    private var stars: [Star] = []
+    private var vt: Double = 0                       // virtual time (2× speed)
+    private let horizon = 34                         // ~59% down the panel
+    private let sunR = 14           // settled snow per column
     private var glows: [Glow] = []
     private var wind = 0.0, windTarget = 0.0, windTimer = 60
     private var frameCount = 0
@@ -145,6 +152,7 @@ final class PixelAmbientView: NSView {
         switch effect {
         case .rain: stepRain()
         case .snow: stepSnow()
+        case .miami: stepMiami()
         }
         render()
     }
@@ -233,6 +241,90 @@ final class PixelAmbientView: NSView {
         f.x = Double.random(in: 0..<Double(Self.gridW))
     }
 
+    // MARK: - Miami Nights (Synthwave Sunset)
+
+    /// 2× speed at 15fps; sun on the right; whole scene drawn at 30% alpha
+    /// (the user-tuned "scene opacity" — text contrast stays ~11:1 worst-case).
+    private func stepMiami() {
+        vt += (1.0 / 15.0) * 2.0
+    }
+
+    private func lerpComponents(_ t: Double, _ a: (UInt8, UInt8, UInt8), _ b: (UInt8, UInt8, UInt8)) -> (UInt8, UInt8, UInt8) {
+        let r = Double(a.0) + (Double(b.0) - Double(a.0)) * t
+        let g = Double(a.1) + (Double(b.1) - Double(a.1)) * t
+        let bl = Double(a.2) + (Double(b.2) - Double(a.2)) * t
+        return (UInt8(r.rounded()), UInt8(g.rounded()), UInt8(bl.rounded()))
+    }
+
+    private func drawMiami() {
+        let scene = 0.3                                  // scene opacity (user-tuned)
+        let pink = rgbBytes(theme.accentHex)             // #FF2E88
+        let orange = rgbBytes(theme.calculatorAccentHex) // #FF8A3D
+        let textTint = rgbBytes(theme.textHex)
+        let sunX = Int((Double(Self.gridW) * 0.62).rounded())
+
+        // stars — twinkle in the sky band
+        for s in stars {
+            let tw = 0.35 + 0.65 * pow(sin(vt * s.speed + s.phase), 2)
+            let c = s.warm ? orange : textTint
+            putPixel(s.x, s.y, c.0, c.1, c.2, tw * 0.85 * scene)
+        }
+
+        // striped sun — semicircle on the horizon, scanline gaps drifting upward
+        let cy = horizon
+        for y in (cy - sunR)..<cy {
+            let dy = cy - y
+            let halfW = Int((Double(sunR * sunR - dy * dy)).squareRoot())
+            let depth = Double(dy) / Double(sunR)
+            let gapH = 0.5 + depth * 1.8                              // wider gaps near horizon
+            let band = ((vt * 1.6 + Double(y)).truncatingRemainder(dividingBy: 4.5) + 4.5)
+                .truncatingRemainder(dividingBy: 4.5)
+            if band < gapH { continue }                               // scanline gap
+            let t = depth
+            let c = lerpComponents(0.15 + 0.85 * t, pink, orange)
+            putPixel(sunX - halfW, y, c.0, c.1, c.2, 0.6 * (0.7 + 0.3 * t) * scene)
+            if halfW > 0 {
+                // fill the full disc width (paint row from sunX-halfW to sunX+halfW-1)
+                for x in (sunX - halfW + 1)..<min(sunX + halfW, Self.gridW) {
+                    putPixel(x, y, c.0, c.1, c.2, 0.6 * (0.7 + 0.3 * t) * scene)
+                }
+            }
+        }
+
+        // horizon line + under-glow
+        for x in 0..<Self.gridW {
+            putPixel(x, horizon, pink.0, pink.1, pink.2, 0.75 * scene)
+            putPixel(x, horizon + 1, orange.0, orange.1, orange.2, 0.35 * scene)
+        }
+
+        // grid floor — verticals fan from the vanishing point
+        let steps = Self.gridH - horizon - 1
+        let vpx = Double(Self.gridW) / 2
+        for k in -6...6 {
+            let xb = vpx + Double(k) * 22.0
+            for s in 0...steps {
+                let y = horizon + s
+                let x = Int((vpx + (xb - vpx) * (Double(s) / Double(steps))).rounded())
+                if x >= 0 && x < Self.gridW {
+                    putPixel(x, y, pink.0, pink.1, pink.2, 0.30 * scene)
+                }
+            }
+        }
+
+        // grid floor — horizontal lines scrolling toward you (perspective spacing)
+        let scroll = vt * 1.2
+        for i in 1...10 {
+            let z = Double(i) - (scroll.truncatingRemainder(dividingBy: 1))
+            let y = horizon + Int((z * z * 0.42).rounded())
+            if y > horizon && y < Self.gridH {
+                let a = 0.14 + 0.3 * (z / 10)
+                for x in 0..<Self.gridW {
+                    putPixel(x, y, pink.0, pink.1, pink.2, a * scene)
+                }
+            }
+        }
+    }
+
     // MARK: - Masks & fades
 
     private func centerMask(_ x: Int, _ y: Int) -> Double {
@@ -272,6 +364,14 @@ final class PixelAmbientView: NSView {
         heightMap = [Int](repeating: 0, count: Self.gridW)
         glows = []
         wind = 0; windTarget = 0; windTimer = 60
+        stars = (0..<9).map { _ in
+            Star(x: Int.random(in: 0..<Self.gridW),
+                 y: Int.random(in: 0..<(horizon - 8)),
+                 speed: 0.6 + Double.random(in: 0...1.4),
+                 phase: Double.random(in: 0...(2 * .pi)),
+                 warm: Bool.random() && Bool.random())      // ~25% warm/orange
+        }
+        vt = 0
         frameCount = 0
         buf = [UInt8](repeating: 0, count: Self.gridW * Self.gridH * 4)
     }
@@ -298,6 +398,7 @@ final class PixelAmbientView: NSView {
         switch effect {
         case .rain: drawRain()
         case .snow: drawSnow()
+        case .miami: drawMiami()
         }
         publish()
     }

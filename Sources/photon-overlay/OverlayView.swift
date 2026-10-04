@@ -410,7 +410,9 @@ struct OverlayView: View {
                 backgroundView
                 PixelAmbientRepresentable(effect: effect, theme: theme)
                     .id(theme.id)                     // fresh state per theme
-                PixelAmbientView.scrim                // text shield
+                if effect != .miami {                 // Miami runs at 30% scene opacity —
+                    PixelAmbientView.scrim            // contrast is already ~11:1 without the shield
+                }
             }
         } else {
             backgroundView
@@ -698,7 +700,7 @@ private struct ThemeRow: View {
                 .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
                 .foregroundStyle(settingsTextColor(theme, isSelected: isSelected))
             // living badge for the themes that have background ambience
-            if kind == .matrix || kind == .ice {
+            if kind == .matrix || kind == .ice || kind == .sunset {
                 PixelBadge(kind: kind)
                     .frame(width: 16, height: 26)
             }
@@ -758,6 +760,31 @@ private struct PixelBadge: View {
                                               width: cell, height: cell)
                             ctx.fill(Path(rect), with: .color((k == 0 ? bright : accent).opacity(a)))
                         }
+                    } else if kind == .sunset {
+                        // mini striped sun with drifting scanline gaps
+                        let cyR = Double(rows) * 0.62
+                        let cx = Double(size.width) / 2
+                        let r = Double(rows) * 0.55
+                        let dyAbs = cyR - Double(headY)
+                        if dyAbs >= 0 && dyAbs <= r {
+                            let halfW = (r * r - dyAbs * dyAbs).squareRoot()
+                            let depth = dyAbs / r
+                            let gapH = 0.5 + depth * 1.8
+                            let band = ((t * 1.6 + Double(headY)).truncatingRemainder(dividingBy: 4.5) + 4.5)
+                                .truncatingRemainder(dividingBy: 4.5)
+                            if band >= gapH {
+                                let tt = depth
+                                let a = 0.65 * (0.7 + 0.3 * tt)
+                                let c2 = Color(hex: "#FF8A3D")
+                                let col = tt < 0.5 ? accent : c2
+                                let rect = CGRect(x: cx - halfW * cell, y: Double(headY) * cell,
+                                                  width: halfW * cell * 2, height: cell)
+                                ctx.fill(Path(rect), with: .color(col.opacity(a)))
+                            }
+                        }
+                        // horizon line
+                        let hRect = CGRect(x: 0, y: cyR * cell, width: size.width, height: cell * 0.5)
+                        ctx.fill(Path(hRect), with: .color(accent.opacity(0.6)))
                     } else {
                         // snow: drifting flake with sideways sway
                         let sway = sin(t * 1.6 + Double(i) * 2.1) * cell * 0.6
