@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photon — Pixel Ambient POC v7 (glyph rain · text shield)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0b12;
+    color: #E6EDF5;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+    padding: 40px 24px 80px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header.page { text-align: center; margin-bottom: 28px; max-width: 760px; }
+  header.page h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  header.page p { color: #8b93a5; margin-top: 8px; font-size: 14px; line-height: 1.55; }
+  header.page p b { color: #c6cdd9; }
+
+  .controls {
+    display: flex; gap: 22px; align-items: center; margin-bottom: 36px;
+    background: #14121b; border: 1px solid rgba(255,255,255,0.09);
+    padding: 12px 20px; border-radius: 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #8b93a5;
+  }
+  .controls label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .controls select { background: #1c1a26; color: #E6EDF5; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 3px 6px; font-family: inherit; }
+  .controls select, .controls input[type=range] { accent-color: #22D3EE; }
+
+  .demo { margin-bottom: 64px; }
+  .demo-label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; max-width: 720px; }
+  .demo-label .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+    color: var(--accent); background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.14);
+  }
+  .demo-label h2 { font-size: 19px; font-weight: 650; }
+  .demo-notes { max-width: 720px; color: #8b93a5; font-size: 13px; line-height: 1.55; margin-bottom: 16px; }
+  .demo-notes b { color: #c6cdd9; }
+
+  .panel {
+    position: relative; width: 720px; height: 460px;
+    border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  /* text shield: soft dark band behind the results so text always pops */
+  .scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.42) 26%,
+      rgba(0,0,0,0.42) 76%, rgba(0,0,0,0.14) 100%);
+  }
+  .ui { position: absolute; inset: 0; display: flex; flex-direction: column; }
+
+  .searchrow { display: flex; align-items: center; gap: 10px; padding: 16px 20px; }
+  .caret-sym { color: var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 25px; font-weight: 500; }
+  .q { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 25px; font-weight: 500; color: var(--text); }
+  .q .caret {
+    display: inline-block; width: 9px; height: 22px; background: var(--accent);
+    vertical-align: -3px; margin-left: 4px;
+    animation: blink 1.1s steps(1) infinite;
+    box-shadow: 0 0 10px var(--accent);
+  }
+  @keyframes blink { 0%,60% {opacity:1} 61%,100% {opacity:0.15} }
+  .streak {
+    height: 1px; margin: 0 20px;
+    background: linear-gradient(90deg, transparent 0%, var(--soft) 28%, var(--bright) 55%, transparent 100%);
+  }
+  .section {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--accent); opacity: 0.8; padding: 12px 20px 4px;
+  }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; position: relative; }
+  .icon { width: 28px; flex: 0 0 28px; text-align: center; font-size: 20px; }
+  .meta { flex: 1; min-width: 0; }
+  .name { font-size: 17px; color: var(--text); font-weight: 500; }
+  .path { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--path); margin-top: 1px; }
+  .row.selected { background: var(--selbg); }
+  .row.selected::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+    background: var(--accent); box-shadow: 0 0 14px var(--accent);
+  }
+  .row.selected .name { text-shadow: 0 0 14px var(--accent); }
+  .slot { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 10px;
+    color: var(--path); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; }
+  .row.selected .slot { color: var(--accent); border-color: var(--accent); }
+  .calc { color: var(--accent2); }
+  .footer {
+    margin-top: auto; display: flex; align-items: center; gap: 16px; padding: 9px 20px;
+    border-top: 1px solid var(--border);
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--path);
+  }
+  .footer kbd { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-family: inherit; }
+  .footer .count { margin-left: auto; color: var(--accent); }
+
+  .m1 { --bg: #050805; --border: rgba(74,222,128,0.25); --text: #E8FFE9; --path: rgba(232,255,233,0.5);
+        --accent: #4ADE80; --accent2: #A3E635; --soft: rgba(163,230,53,0.55); --bright: rgba(74,222,128,0.95);
+        --selbg: rgba(74,222,128,0.08); }
+  .m2 { --bg: #04101C; --border: rgba(0,240,255,0.25); --text: #E8FDFF; --path: rgba(232,253,255,0.5);
+        --accent: #00F0FF; --accent2: #7DD3FC; --soft: rgba(0,240,255,0.5); --bright: rgba(224,254,255,0.95);
+        --selbg: rgba(0,240,255,0.08); }
+
+  .impl-note { max-width: 720px; margin-top: -36px; color: #8b93a5; font-size: 13px; line-height: 1.6; }
+  .impl-note b { color: #c6cdd9; }
+  .impl-note code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: #1a1822; padding: 1px 5px; border-radius: 4px; color: #c6cdd9; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>Photon — Pixel Ambient POC · v2</h1>
+  <p><b>v4 changes:</b> Matrix rain is now <b>shooting stars</b> — infrequent, fast diagonal streaks
+  with a glowing head and short tail; the panel is calm between them. Ice Circuit snow is
+  <b>25% more transparent</b>, sparser, and driven by a <b>wind system</b> that eases between left and
+  right gusts — watch for the faint pixel <b>wind streaks</b> when a gust picks up. The snowbank
+  still accumulates (and drifts downwind, naturally).</p>
+</header>
+
+<div class="controls">
+  <label>Density
+    <select id="density">
+      <option value="subtle">subtle</option>
+      <option value="normal" selected>normal</option>
+      <option value="lush">lush</option>
+    </select>
+  </label>
+  <label>FPS
+    <select id="fps">
+      <option value="10">10</option>
+      <option value="15" selected>15</option>
+      <option value="24">24</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="paused"> pause</label>
+  <label><input type="checkbox" id="shield" checked> text shield</label>
+  <span id="windInd" style="margin-left:auto;color:#00F0FF;min-width:150px;text-align:right">wind: calm</span>
+</div>
+
+<!-- DEMO 1 · MATRIX RAIN (calm) -->
+<div class="demo">
+  <div class="demo-label"><span class="tag" style="--accent:#4ADE80">Acid Matrix · glyph rain</span><h2>Shimmering trails, more frequent falls</h2></div>
+  <p class="demo-notes">Columns spawn every ~1s, and the trails <b>shimmer</b> — cells randomly
+  re-roll their brightness like the characters are being re-rolled. Watch a trail's tail:
+  it never sits still. The <b>text shield</b> (toggle above) keeps your results readable on top.</p>
+  <div class="panel m1">
+    <canvas id="cv-matrix" width="90" height="58"></canvas>
+    <div class="scrim" data-shield></div>
+    <div class="ui">
+      <div class="searchrow"><span class="caret-sym">›</span><span class="q">terminal<span class="caret"></span></span></div>
+      <div class="streak"></div>
+      <div class="section">Best match</div>
+      <div class="row selected"><div class="icon">🖥️</div><div class="meta"><div class="name">Terminal</div><div class="path">/System/Applications/Utilities/Terminal.app</div></div><span class="slot">⌘1</span></div>
+      <div class="row"><div class="icon">📝</div><div class="meta"><div class="name">TextEdit</div><div class="path">/System/Applications/TextEdit.app</div></div><span class="slot">⌘2</span></div>
+      <div class="section">Recent</div>
+      <div class="row"><div class="icon">🟰</div><div class="meta"><div class="name calc">= 1024</div><div class="path">2^10 — return copies to clipboard</div></div><span class="hintchip kbd">↵ copy</span></div>
+      <div class="footer"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="count">3 results</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- DEMO 2 · SNOW → CIRCUITS -->
+<div class="demo">
+  <div class="demo-label"><span class="tag" style="--accent:#00F0FF">Ice Circuit · snowfall</span><h2>Softer snow, protected results</h2></div>
+  <p class="demo-notes">Same snowfall — now with the <b>center mask</b> (flakes dim behind the
+  results) on top of the <b>text shield</b>. Toggle the shield above to see how much it helps.</p>
+  <div class="panel m2">
+    <canvas id="cv-snow" width="90" height="58"></canvas>
+    <div class="scrim" data-shield></div>
+    <div class="ui">
+      <div class="searchrow"><span class="caret-sym">›</span><span class="q">terminal<span class="caret"></span></span></div>
+      <div class="streak"></div>
+      <div class="section">Best match</div>
+      <div class="row selected"><div class="icon">🖥️</div><div class="meta"><div class="name">Terminal</div><div class="path">/System/Applications/Utilities/Terminal.app</div></div><span class="slot">⌘1</span></div>
+      <div class="row"><div class="icon">📝</div><div class="meta"><div class="name">TextEdit</div><div class="path">/System/Applications/TextEdit.app</div></div><span class="slot">⌘2</span></div>
+      <div class="section">Recent</div>
+      <div class="row"><div class="icon">🟰</div><div class="meta"><div class="name calc">= 1024</div><div class="path">2^10 — return copies to clipboard</div></div><span class="hintchip kbd">↵ copy</span></div>
+      <div class="footer"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="count">3 results</span></div>
+    </div>
+  </div>
+</div>
+
+<p class="impl-note">
+  <b>Swift plan (unchanged, still nearly free):</b> one <code>CALayer</code> with a <code>96×64</code>
+  offscreen bitmap, <code>.nearest</code> magnification, repainted <code>12–20×/s</code> on a background
+  queue — ≈6k pixels per update, <b>&lt;1% CPU, ~zero GPU</b>. Frozen while the overlay is hidden;
+  honors <code>accessibilityReduceMotion</code> with a static frame. The circuit logic is the same
+  grid walk you see here — a few dozen live cells at any moment.
+</p>
+
+<script>
+const densitySel = document.getElementById('density');
+const fpsSel = document.getElementById('fps');
+const pausedEl = document.getElementById('paused');
+const shieldEl = document.getElementById('shield');
+const windInd = document.getElementById('windInd');
+const DF = () => ({ subtle: 0.5, normal: 1.0, lush: 1.8 }[densitySel.value]);
+
+// text shield toggle: show/hide the scrims
+const scrims = document.querySelectorAll('.scrim');
+function applyShield() { scrims.forEach(el => el.style.display = shieldEl.checked ? '' : 'none'); }
+shieldEl.addEventListener('change', applyShield);
+applyShield();
+
+/* ========== MATRIX · glyph rain (frequent · shimmering trails) ========== */
+const mCv = document.getElementById('cv-matrix');
+const mCtx = mCv.getContext('2d');
+const MW = mCv.width, MH = mCv.height;
+let mBright = new Float32Array(MW * MH);
+let columns = [];
+let colCooldown = 0;
+
+function centerMask(x, y) {
+  const cx = MW/2, cy = MH*0.52;
+  const dx = Math.abs(x - cx) / (MW/2);
+  const dy = Math.abs(y - cy) / (MH/2);
+  const d = Math.max(dx, dy);
+  return 0.55 + 0.45 * Math.pow(Math.min(1, d), 1.4);
+}
+
+function matrixRowFade(y) {
+  const t = y / MH;
+  if (t < 0.14) return 0.6;
+  if (t < 0.5)  return 0.75 + 0.25 * ((t - 0.14) / 0.36);
+  return 1.0 - 0.85 * ((t - 0.5) / 0.5);
+}
+
+function spawnColumn() {
+  columns.push({
+    x: Math.floor(Math.random() * MW),
+    y: -1,
+    vy: 0.9 + Math.random() * 0.7,      // brisk fall
+    acc: 0
+  });
+}
+
+function stepMatrix() {
+  for (let i = 0; i < mBright.length; i++) mBright[i] *= 0.91;   // short-ish trail
+
+  // MUCH more frequent: a new column roughly every second
+  colCooldown--;
+  if (colCooldown <= 0 && columns.length < 8) {
+    spawnColumn();
+    colCooldown = 8 + Math.floor(Math.random() * 20);    // ~0.5–1.9s
+  }
+
+  for (const c of columns) {
+    c.acc += c.vy;
+    while (c.acc >= 1) {
+      c.acc -= 1;
+      c.y += 1;
+      if (c.y >= MH) { c.dead = true; break; }
+      mBright[c.y * MW + c.x] = 1.0;                     // hot head
+    }
+  }
+  columns = columns.filter(c => !c.dead);
+
+  // GLYPH SHIMMER: trail cells randomly re-roll their brightness —
+  // the pixel-scale version of the film's re-rolled characters.
+  const rolls = Math.round(140 * DF());
+  for (let i = 0; i < rolls; i++) {
+    const idx = (Math.random() * MW * MH) | 0;
+    const b = mBright[idx];
+    if (b > 0.15 && b < 0.85) {                          // trail cells only, not heads
+      mBright[idx] = 0.2 + Math.random() * 0.55;
+    }
+  }
+}
+
+function drawMatrix() {
+  mCtx.fillStyle = '#050805';
+  mCtx.fillRect(0, 0, MW, MH);
+  for (let y = 0; y < MH; y++) {
+    const rf = matrixRowFade(y);
+    if (rf < 0.04) continue;
+    for (let x = 0; x < MW; x++) {
+      const b = mBright[y * MW + x];
+      if (b < 0.08) continue;
+      const m = centerMask(x, y) * rf;
+      if (b > 0.9) {
+        mCtx.fillStyle = 'rgba(200,255,190,' + (0.4 * m).toFixed(2) + ')';
+      } else {
+        mCtx.fillStyle = 'rgba(74,222,128,' + (b * 0.22 * m).toFixed(2) + ')';
+      }
+      mCtx.fillRect(x, y, 1, 1);
+    }
+  }
+}
+
+/* ========== SNOW · center mask · accumulation ========== */
+const sCv = document.getElementById('cv-snow');
+const sCtx = sCv.getContext('2d');
+const SW = sCv.width, SH = sCv.height;
+let flakes = [];
+let heightMap = new Int16Array(SW);
+let settleGlows = [];
+const MAX_PILE = 10;
+
+let wind = 0, windTarget = 0, windTimer = 60;
+function stepWind() {
+  windTimer--;
+  if (windTimer <= 0) {
+    if (Math.random() < 0.6) windTarget = (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.4);
+    else windTarget = (Math.random() * 2 - 1) * 0.2;
+    windTimer = 130 + Math.floor(Math.random() * 240);
+  }
+  wind += (windTarget - wind) * 0.01;
+  if (windInd) {
+    const s = Math.abs(wind);
+    windInd.textContent = s < 0.2 ? 'wind: calm'
+      : 'wind: ' + (wind > 0 ? '→→ ' : '←← ') + (s * 100).toFixed(0) + '%';
+    windInd.style.color = s < 0.2 ? '#8b93a5' : '#00F0FF';
+  }
+}
+
+function snowMask(x, y) {
+  const cx = SW/2, cy = SH*0.52;
+  const dx = Math.abs(x - cx) / (SW/2);
+  const dy = Math.abs(y - cy) / (SH/2);
+  const d = Math.max(dx, dy);
+  return 0.45 + 0.55 * Math.pow(Math.min(1, d), 1.5);
+}
+
+function seedSnow() {
+  flakes = []; heightMap.fill(0); settleGlows = [];
+  const count = Math.round(14 * DF());
+  for (let i = 0; i < count; i++) {
+    const far = Math.random() < 0.6;
+    flakes.push({
+      x: Math.random()*SW, y: Math.random()*SH,
+      speed: far ? 0.08 + Math.random()*0.12 : 0.2 + Math.random()*0.24,
+      drift: Math.random()*Math.PI*2,
+      driftSpeed: 0.008 + Math.random()*0.02,
+      alpha: (far ? 0.13 + Math.random()*0.1 : 0.24 + Math.random()*0.2),
+      windFactor: far ? 0.2 : 0.5
+    });
+  }
+}
+seedSnow();
+
+function snowDepthFade(y) {
+  const t = Math.min(1, y / SH);
+  return 1 - 0.75 * Math.pow(t, 1.4);
+}
+
+function landFlake(f) {
+  let col = Math.max(0, Math.min(SW - 1, Math.round(f.x)));
+  const avg = heightMap.reduce((a, b) => a + b, 0) / SW;
+  if (heightMap[col] < MAX_PILE && avg < MAX_PILE * 0.85) {
+    heightMap[col]++;
+    settleGlows.push({ x: col, y: SH - heightMap[col], born: 0, life: 14 });
+    let guard = 0;
+    while (guard++ < 4) {
+      const l = col > 0 ? heightMap[col-1] : 99;
+      const r = col < SW-1 ? heightMap[col+1] : 99;
+      if (heightMap[col] - Math.min(l, r) > 1) {
+        if (l <= r) { heightMap[col-1]++; heightMap[col]--; col--; }
+        else        { heightMap[col+1]++; heightMap[col]--; col++; }
+      } else break;
+    }
+  }
+  f.y = -1; f.x = Math.random()*SW;
+}
+
+function stepSnow() {
+  stepWind();
+  for (const f of flakes) {
+    f.y += f.speed;
+    f.drift += f.driftSpeed;
+    f.x += Math.sin(f.drift) * 0.06 + wind * f.windFactor;
+    if (f.x < -1) f.x = SW; else if (f.x > SW + 1) f.x = 0;
+    const col = Math.max(0, Math.min(SW - 1, Math.round(f.x)));
+    const groundY = SH - 1 - heightMap[col];
+    if (f.y >= groundY) landFlake(f);
+  }
+  for (const g of settleGlows) g.born++;
+  settleGlows = settleGlows.filter(g => g.born < g.life);
+}
+
+function drawSnow() {
+  sCtx.fillStyle = '#04101C';
+  sCtx.fillRect(0, 0, SW, SH);
+  const g = sCtx.createLinearGradient(0, 0, 0, 26);
+  g.addColorStop(0, 'rgba(0,240,255,0.05)');
+  g.addColorStop(1, 'rgba(0,240,255,0)');
+  sCtx.fillStyle = g;
+  sCtx.fillRect(0, 0, SW, 26);
+
+  for (let x = 0; x < SW; x++) {
+    const h = heightMap[x];
+    for (let k = 0; k < h; k++) {
+      const y = SH - 1 - k;
+      const top = (k === h - 1);
+      const dither = ((x * 7 + k * 13) % 3) * 0.04;
+      sCtx.fillStyle = top
+        ? 'rgba(224,254,255,' + (0.34 + dither).toFixed(2) + ')'
+        : 'rgba(190,225,250,' + (0.15 + dither).toFixed(2) + ')';
+      sCtx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  for (const gl of settleGlows) {
+    const t = gl.born / gl.life;
+    sCtx.fillStyle = 'rgba(224,254,255,' + (0.4 * (1 - t)).toFixed(2) + ')';
+    sCtx.fillRect(gl.x, gl.y, 1, 1);
+  }
+
+  for (const f of flakes) {
+    const a = f.alpha * snowDepthFade(f.y) * snowMask(Math.round(f.x), Math.round(f.y));
+    if (a < 0.03) continue;
+    sCtx.fillStyle = 'rgba(224,254,255,' + a.toFixed(2) + ')';
+    sCtx.fillRect(Math.round(f.x), Math.round(f.y), 1, 1);
+  }
+}
+
+/* ---------- loop ---------- */
+let timer = null;
+function startLoop() {
+  if (timer) clearInterval(timer);
+  const fps = parseInt(fpsSel.value);
+  timer = setInterval(() => {
+    if (pausedEl.checked) return;
+    stepMatrix(); drawMatrix();
+    stepSnow(); drawSnow();
+  }, 1000 / fps);
+}
+densitySel.addEventListener('change', () => { seedSnow(); });
+fpsSel.addEventListener('change', startLoop);
+startLoop();
+</script>
+</body>
+</html>

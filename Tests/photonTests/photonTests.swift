@@ -511,3 +511,15 @@ private func makeTempFile(_ name: String) -> URL {
     #expect(apps.contains { $0.name == "Finder" },
             "Finder lives in CoreServices, outside the standard app folders")
 }
+
+@Test func pixelAmbient_effectMapping() {
+    // Rain family + snow; static themes stay static.
+    #expect(PixelAmbientView.effect(for: .matrix) == .rain)
+    #expect(PixelAmbientView.effect(for: .synth) == .rain)
+    #expect(PixelAmbientView.effect(for: .sunset) == .rain)
+    #expect(PixelAmbientView.effect(for: .ice) == .snow)
+    #expect(PixelAmbientView.effect(for: .classic) == nil)
+    #expect(PixelAmbientView.effect(for: .carbonSolid) == nil)
+    #expect(PixelAmbientView.effect(for: .schematic) == nil)
+    #expect(PixelAmbientView.effect(for: .paper) == nil)
+}

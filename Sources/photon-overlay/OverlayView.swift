@@ -75,7 +75,7 @@ struct OverlayView: View {
             }
         }
         .frame(width: 720, height: 460)
-        .background(backgroundView)
+        .background { ambientBackground }
         .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
         // Fast entrance: sub-150ms fade + micro-scale so it reads as instant,
         // not floaty.
@@ -399,6 +399,23 @@ struct OverlayView: View {
     }
 
     // MARK: Background
+
+    /// Neon themes get the pixel ambient behind their gradient, plus the
+    /// text-shield scrim so results stay readable. Static themes keep the
+    /// plain background.
+    @ViewBuilder
+    private var ambientBackground: some View {
+        if let effect = PixelAmbientView.effect(for: theme.id) {
+            ZStack {
+                backgroundView
+                PixelAmbientRepresentable(effect: effect, theme: theme)
+                    .id(theme.id)                     // fresh state per theme
+                PixelAmbientView.scrim                // text shield
+            }
+        } else {
+            backgroundView
+        }
+    }
 
     @ViewBuilder
     private var backgroundView: some View {
