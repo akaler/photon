@@ -192,13 +192,13 @@ struct OverlayView: View {
         case theme(ThemeKind)
         case folder(Int)     // index into state.scanFolders
         case addFolder
-        case hotkey
+        case hotkey(command: Bool)  // radio: true = ⌘Space, false = ⌥Space (default)
     }
 
     private var settingsRows: [SettingsItem] {
         ThemeKind.allCases.map(SettingsItem.theme)
             + state.scanFolders.indices.map(SettingsItem.folder)
-            + [.addFolder, .hotkey]
+            + [.addFolder, .hotkey(command: false), .hotkey(command: true)]
     }
 
     private var selectedSettingsRow: SettingsItem? {
@@ -230,8 +230,8 @@ struct OverlayView: View {
             editingCap = false
         case .addFolder:
             addFolderViaPicker()
-        case .hotkey:
-            state.setHotkeyUsesCommand(!state.hotkeyUsesCommand)
+        case .hotkey(let command):
+            state.setHotkeyUsesCommand(command)
         case nil:
             break
         }
@@ -487,7 +487,9 @@ struct OverlayView: View {
                             isSelected: selectedSettingsRow == .addFolder,
                             onSelect: {
                                 // Click = activate (open picker), same as Return.
-                                settingsIndex = settingsRows.count - 2
+                                if let idx = settingsRows.firstIndex(of: .addFolder) {
+                                    settingsIndex = idx
+                                }
                                 addFolderViaPicker()
                             }
                         )
@@ -495,19 +497,28 @@ struct OverlayView: View {
 
                         settingsSectionHeader("Hotkey")
 
-                        SettingsRow(
-                            title: "⌘Space trigger",
-                            subtitle: state.hotkeyUsesCommand
-                                ? "on · Spotlight shortcut goes to Photon"
-                                : "off · using ⌥Space (default)",
-                            theme: theme,
-                            isSelected: selectedSettingsRow == .hotkey,
-                            onSelect: {
-                                settingsIndex = settingsRows.count - 1
-                                state.setHotkeyUsesCommand(!state.hotkeyUsesCommand)
-                            }
-                        )
-                        .id(settingsRows.firstIndex(of: .hotkey) ?? 0)
+                        ForEach(
+                            [(false, "⌥Space", "default · Spotlight keeps ⌘Space"),
+                             (true, "⌘Space", "takes over Spotlight's shortcut")],
+                            id: \.0
+                        ) { item in
+                            let command = item.0
+                            SettingsRow(
+                                title: item.1,
+                                subtitle: item.2,
+                                theme: theme,
+                                isSelected: selectedSettingsRow == .hotkey(command: command),
+                                isActive: state.hotkeyUsesCommand == command,
+                                onSelect: {
+                                    // Click = select this trigger, same as Return.
+                                    if let idx = settingsRows.firstIndex(of: .hotkey(command: command)) {
+                                        settingsIndex = idx
+                                    }
+                                    state.setHotkeyUsesCommand(command)
+                                }
+                            )
+                            .id(settingsRows.firstIndex(of: .hotkey(command: command)) ?? 0)
+                        }
                     }
                 }
                 .onChange(of: settingsIndex) { _, idx in
@@ -588,20 +599,25 @@ private struct SettingsRow: View {
     let subtitle: String
     let theme: Theme
     let isSelected: Bool
+    var isActive: Bool = false
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 15, weight: isSelected || isActive ? .semibold : .regular))
                     .foregroundStyle(settingsTextColor(theme, isSelected: isSelected))
                 Text(subtitle)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(settingsDimColor(theme, isSelected: isSelected))
             }
             Spacer()
-            if isSelected {
+            // Radio-style marker: the current selection (distinct from cursor).
+            if isActive {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color(hex: theme.accentHex))
+            } else if isSelected {
                 Image(systemName: "arrow.right.circle.fill")
                     .foregroundStyle(settingsTextColor(theme, isSelected: isSelected))
             }

@@ -184,6 +184,7 @@ final class ScanState: ObservableObject {
         let config = Config.load()
         self.theme = Theme.theme(config.resolvedTheme)
         self.scanFolders = config.scanFolders
+        self.hotkeyUsesCommand = config.usesCommandSpace
     }
 
     /// Switch skins (live) and persist the choice.
@@ -409,16 +410,16 @@ final class ScanState: ObservableObject {
     static let hotkeyChangedNotification = Notification.Name("photon.hotkeyChanged")
 
     /// Whether ⌘Space (instead of ⌥Space) currently triggers the overlay.
-    var hotkeyUsesCommand: Bool {
-        Config.load().usesCommandSpace
-    }
+    /// Published so the settings radio rows update instantly on toggle.
+    @Published private(set) var hotkeyUsesCommand: Bool = false
 
-    /// Flip the trigger between ⌘Space and ⌥Space, persist, and notify the
-    /// app delegate to re-register the hotkey live.
+    /// Select the trigger: true = ⌘Space, false = ⌥Space (default). Persists
+    /// and notifies the app delegate to re-register the hotkey live.
     func setHotkeyUsesCommand(_ enabled: Bool) {
         var config = Config.load()
         config.hotkeyUsesCommand = enabled
         config.save()
+        hotkeyUsesCommand = enabled
         NotificationCenter.default.post(name: Self.hotkeyChangedNotification, object: nil)
     }
 }
