@@ -10,11 +10,15 @@ public struct Config: Codable {
     /// When true, the overlay trigger is ⌘Space instead of the default ⌥Space.
     /// Optional so older configs decode unchanged (nil = ⌥Space).
     public var hotkeyUsesCommand: Bool?
+    /// Active color scheme inside multi-palette themes (Cyberpunk). Nil = default.
+    public var cyberVariant: String?
 
-    public init(scanFolders: [ScanFolder] = [], themeID: ThemeKind? = nil, hotkeyUsesCommand: Bool? = nil) {
+    public init(scanFolders: [ScanFolder] = [], themeID: ThemeKind? = nil,
+                hotkeyUsesCommand: Bool? = nil, cyberVariant: String? = nil) {
         self.scanFolders = scanFolders
         self.themeID = themeID
         self.hotkeyUsesCommand = hotkeyUsesCommand
+        self.cyberVariant = cyberVariant
     }
 
     // MARK: - Codable (backward compatible with pre-ScanFolder configs)
@@ -23,6 +27,7 @@ public struct Config: Codable {
         case scanFolders
         case themeID
         case hotkeyUsesCommand
+        case cyberVariant
         // legacy keys
         case selectedScopes
         case customScopes
@@ -45,8 +50,13 @@ public struct Config: Codable {
             self.scanFolders = folders
         }
 
-        self.themeID = try c.decodeIfPresent(ThemeKind?.self, forKey: .themeID) ?? nil
+        if let raw = try c.decodeIfPresent(String.self, forKey: .themeID) {
+            self.themeID = ThemeKind(rawValue: raw)
+        } else {
+            self.themeID = nil
+        }
         self.hotkeyUsesCommand = try c.decodeIfPresent(Bool.self, forKey: .hotkeyUsesCommand) ?? nil
+        self.cyberVariant = try c.decodeIfPresent(String.self, forKey: .cyberVariant) ?? nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -54,6 +64,7 @@ public struct Config: Codable {
         try c.encode(scanFolders, forKey: .scanFolders)
         try c.encodeIfPresent(themeID, forKey: .themeID)
         try c.encodeIfPresent(hotkeyUsesCommand, forKey: .hotkeyUsesCommand)
+        try c.encodeIfPresent(cyberVariant, forKey: .cyberVariant)
     }
 
     /// The resolved trigger modifier: ⌘Space when opted in, otherwise ⌥Space.

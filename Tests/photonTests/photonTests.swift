@@ -350,19 +350,54 @@ private func makeTempFile(_ name: String) -> URL {
 // MARK: - UI Themes & Slot Keys (add-ui-themes-and-slot-keys)
 
 @Test func themeRegistry_isCompleteAndValid() {
-    #expect(ThemeKind.allCases.count == 5)
-    #expect(Set(ThemeKind.allCases.map(\.rawValue)).count == 5)
+    #expect(ThemeKind.allCases.count == 6)
+    #expect(Set(ThemeKind.allCases.map(\.rawValue)).count == 6)
 
     let validHex = try! NSRegularExpression(pattern: "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$")
     for kind in ThemeKind.allCases {
         let t = Theme.theme(kind)
         for hex in [t.bgTopHex, t.bgBottomHex, t.borderHex, t.textHex, t.accentHex,
-                    t.calculatorAccentHex, t.selectionHex, t.onSelectionHex] {
+                    t.calculatorAccentHex, t.selectionHex, t.onSelectionHex,
+                    t.streakSoftHex, t.streakBrightHex] {
             let range = NSRange(hex.startIndex..., in: hex)
             #expect(validHex.firstMatch(in: hex, range: range) != nil, "\(kind): bad hex \(hex)")
         }
         #expect(t.iconSize > 0)
     }
+}
+
+@Test func theme_cyberpunkVariantsAreDistinctAndComplete() {
+    // All six variants share the Cyberpunk skeleton but differ in palette.
+    let palettes = CyberVariant.allCases.map { Theme.theme(.cyberpunk, variant: $0.rawValue) }
+    #expect(Set(palettes.map(\.accentHex)).count == CyberVariant.allCases.count,
+            "each variant has its own accent")
+
+    for t in palettes {
+        #expect(!t.usesMaterial)
+        #expect(t.selectionKind == .accentBar)
+        #expect(t.showsStreak && t.showsFooter && t.showsSlotChips)
+        #expect(t.queryIsMono)
+    }
+
+    // Spot-check two: synth is violet/cyan/magenta, matrix is black/acid green.
+    let synth = Theme.theme(.cyberpunk, variant: CyberVariant.synth.rawValue)
+    #expect(synth.accentHex == "#22D3EE" && synth.calculatorAccentHex == "#F472B6")
+    let matrix = Theme.theme(.cyberpunk, variant: CyberVariant.matrix.rawValue)
+    #expect(matrix.accentHex == "#4ADE80" && matrix.bgTopHex == "#050805")
+
+    // Unknown/nil variant falls back to the default (synth).
+    #expect(Theme.theme(.cyberpunk, variant: nil).accentHex == "#22D3EE")
+    #expect(Theme.theme(.cyberpunk, variant: "bogus").accentHex == "#22D3EE")
+}
+
+@Test func config_cyberVariantRoundTrip() throws {
+    let encoder = JSONEncoder(), decoder = JSONDecoder()
+    var config = Config()
+    config.themeID = .cyberpunk
+    config.cyberVariant = "matrix"
+    let decoded = try decoder.decode(Config.self, from: encoder.encode(config))
+    #expect(decoded.themeID == .cyberpunk)
+    #expect(decoded.cyberVariant == "matrix")
 }
 
 @Test func theme_carbonSolidMatchesMock() {

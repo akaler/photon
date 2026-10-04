@@ -61,6 +61,8 @@ struct OverlayView: View {
     @State private var editingFolder: Int? = nil
     /// While editing a folder, which limit is active (false = depth, true = cap).
     @State private var editingCap = false
+    /// Drives the fast fade/scale-in when the overlay opens.
+    @State private var appeared = false
 
     private var theme: Theme { state.theme }
 
@@ -75,13 +77,22 @@ struct OverlayView: View {
         .frame(width: 720, height: 460)
         .background(backgroundView)
         .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+        // Fast entrance: sub-150ms fade + micro-scale so it reads as instant,
+        // not floaty.
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared ? 1.0 : 0.965)
+        .animation(.easeOut(duration: 0.13), value: appeared)
         .onKeyPress { handleKey($0) }
         .task {
+            appeared = true
             searchFocused = true
             if state.results.isEmpty { state.scan() }
         }
         .onChange(of: state.focusGeneration) { _, _ in
+            appeared = false
             Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 20_000_000)
+                withAnimation(.easeOut(duration: 0.13)) { appeared = true }
                 try? await Task.sleep(nanoseconds: 100_000_000) // let the panel become key
                 searchFocused = true
             }
@@ -190,13 +201,30 @@ struct OverlayView: View {
 
     private enum SettingsItem: Equatable {
         case theme(ThemeKind)
+        case cyberVariant(CyberVariant)  // sub-picker, visible under Cyberpunk
         case folder(Int)     // index into state.scanFolders
         case addFolder
         case hotkey(command: Bool)  // radio: true = ⌘Space, false = ⌥Space (default)
     }
 
+    /// Cyberpunk's color variants show as sub-rows when the theme is active
+    /// or the cursor is on its row. Reads settingsIndex directly — going
+    /// through selectedSettingsRow would recurse back into settingsRows.
+    private var cyberVariantsVisible: Bool {
+        if theme.id == .cyberpunk { return true }
+        let cyberIndex = ThemeKind.allCases.firstIndex(of: .cyberpunk) ?? -1
+        return settingsIndex == cyberIndex
+    }
+
     private var settingsRows: [SettingsItem] {
-        ThemeKind.allCases.map(SettingsItem.theme)
+        var rows: [SettingsItem] = []
+        for kind in ThemeKind.allCases {
+            rows.append(.theme(kind))
+            if kind == .cyberpunk && cyberVariantsVisible {
+                rows += CyberVariant.allCases.map(SettingsItem.cyberVariant)
+            }
+        }
+        return rows
             + state.scanFolders.indices.map(SettingsItem.folder)
             + [.addFolder, .hotkey(command: false), .hotkey(command: true)]
     }
@@ -225,6 +253,8 @@ struct OverlayView: View {
         case .theme(let kind):
             state.setTheme(kind)
             exitSettings()
+        case .cyberVariant(let variant):
+            state.setCyberVariant(variant)  // apply live, stay open to compare
         case .folder(let idx):
             editingFolder = idx
             editingCap = false
@@ -298,7 +328,7 @@ struct OverlayView: View {
                 .onChange(of: state.query) { _, _ in state.selectedIndex = 0 }
 
             if theme.showsStreak {
-                PhotonStreak()
+                PhotonStreak(theme: theme)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 6)
             } else {
@@ -433,7 +463,7 @@ struct OverlayView: View {
                     VStack(spacing: 0) {
                         settingsSectionHeader("Theme")
 
-                        ForEach(ThemeKind.allCases, id: \.self) { kind in
+                        ForEach(Array(ThemeKind.allCases.enumerated()), id: \.element) { _, kind in
                             ThemeRow(
                                 kind: kind,
                                 theme: theme,
@@ -447,6 +477,28 @@ struct OverlayView: View {
                                 }
                             )
                             .id(ThemeKind.allCases.firstIndex(of: kind) ?? 0)
+
+                            if kind == .cyberpunk && cyberVariantsVisible {
+                                ForEach(Array(CyberVariant.allCases.enumerated()), id: \.element) { _, variant in
+                                    let palette = variant.palette
+                                    SettingsRow(
+                                        title: variant.displayName,
+                                        subtitle: variant.rawValue,
+                                        theme: theme,
+                                        isSelected: selectedSettingsRow == .cyberVariant(variant),
+                                        isActive: theme.id == .cyberpunk && state.cyberVariant == variant,
+                                        dotHex: palette.accentHex,
+                                        onSelect: {
+                                            if let idx = settingsRows.firstIndex(of: .cyberVariant(variant)) {
+                                                settingsIndex = idx
+                                            }
+                                            state.setCyberVariant(variant)
+                                        }
+                                    )
+                                    .id(settingsRows.firstIndex(of: .cyberVariant(variant)) ?? 0)
+                                    .padding(.leading, 22)
+                                }
+                            }
                         }
 
                         settingsSectionHeader("Scan folders")
@@ -521,6 +573,7 @@ struct OverlayView: View {
                         }
                     }
                 }
+                .animation(.easeOut(duration: 0.08), value: settingsIndex)
                 .onChange(of: settingsIndex) { _, idx in
                     withAnimation(.easeOut(duration: 0.12)) {
                         proxy.scrollTo(idx, anchor: .center)
@@ -557,21 +610,24 @@ struct OverlayView: View {
     }
 }
 
-// MARK: - PhotonStreak (Carbon Bar flourish)
+// MARK: - PhotonStreak (Carbon/Neon flourish)
 
 private struct PhotonStreak: View {
+    let theme: Theme
+
     var body: some View {
         Rectangle()
             .fill(
                 LinearGradient(
                     colors: [.clear,
-                             Color(hex: "#7DD3FC").opacity(0.55),
-                             Color(hex: "#E0F2FE").opacity(0.9),
+                             Color(hex: theme.streakSoftHex).opacity(0.6),
+                             Color(hex: theme.streakBrightHex).opacity(0.95),
                              .clear],
                     startPoint: .leading, endPoint: .trailing
                 )
             )
             .frame(height: 1)
+            .shadow(color: Color(hex: theme.streakBrightHex).opacity(0.6), radius: 1.5)
     }
 }
 
@@ -600,10 +656,17 @@ private struct SettingsRow: View {
     let theme: Theme
     let isSelected: Bool
     var isActive: Bool = false
+    var dotHex: String? = nil
     let onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
+            if let dotHex {
+                Circle()
+                    .fill(Color(hex: dotHex))
+                    .frame(width: 11, height: 11)
+                    .shadow(color: Color(hex: dotHex).opacity(0.8), radius: 3)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 15, weight: isSelected || isActive ? .semibold : .regular))
@@ -865,6 +928,7 @@ private struct ResultsList: View {
                         }
                     }
                 }
+                .animation(.easeOut(duration: 0.07), value: state.selectedIndex)
                 .onChange(of: state.selectedIndex) { _, index in
                     let visible = state.visibleResults
                     guard index < visible.count else { return }
