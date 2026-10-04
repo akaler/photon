@@ -368,7 +368,7 @@ private func makeTempFile(_ name: String) -> URL {
 
 @Test func theme_neonFamilyIsDistinctAndComplete() {
     // The four neon themes share the accent-bar skeleton but differ in palette.
-    let neon: [ThemeKind] = [.synth, .matrix, .sunset, .ice]
+    let neon: [ThemeKind] = [.city, .matrix, .sunset, .ice]
     let themes = neon.map(Theme.theme(_:))
     #expect(Set(themes.map(\.accentHex)).count == neon.count,
             "each neon theme has its own accent")
@@ -517,7 +517,7 @@ private func makeTempFile(_ name: String) -> URL {
     #expect(PixelAmbientView.effect(for: .matrix) == .rain)   // Acid Matrix rains
     #expect(PixelAmbientView.effect(for: .ice) == .snow)      // Ice Circuit snows
     #expect(PixelAmbientView.effect(for: .sunset) == .miami)  // Synthwave Sunset gets Miami Nights
-    #expect(PixelAmbientView.effect(for: .synth) == nil)      // static for now
+    #expect(PixelAmbientView.effect(for: .city) == .city)     // Neon City gets the skyline
     #expect(PixelAmbientView.effect(for: .classic) == nil)
     #expect(PixelAmbientView.effect(for: .carbonSolid) == nil)
     #expect(PixelAmbientView.effect(for: .schematic) == nil)

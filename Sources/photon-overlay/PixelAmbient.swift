@@ -16,7 +16,7 @@ import PhotonCore
 ///   open starts clean. Zero cost while Photon sits in the background.
 /// * `accessibilityDisplayShouldReduceMotion` → renders one static frame.
 final class PixelAmbientView: NSView {
-    enum Effect: Equatable { case rain, snow, miami }
+    enum Effect: Equatable { case rain, snow, miami, city }
 
     static let gridW = 90, gridH = 58
 
@@ -26,6 +26,7 @@ final class PixelAmbientView: NSView {
         case .matrix: return .rain
         case .ice: return .snow
         case .sunset: return .miami
+        case .city: return .city
         default: return nil
         }
     }
@@ -55,6 +56,17 @@ final class PixelAmbientView: NSView {
 
     private var flakes: [Flake] = []
     private var heightMap = [Int](repeating: 0, count: gridW)
+    // Neon City: procedural Blade Runner skyline (towers, windows, signs, beacon)
+    private struct Building { var x: Int; var w: Int; var h: Int; var antenna: Bool; var antennaH: Int }
+    private struct CityWindow { var x: Int; var y: Int; var r: UInt8; var g: UInt8; var b: UInt8; var base: Double; var toggler: Bool; var timer: Double; var on: Bool }
+    private struct CitySign { var x: Int; var y: Int; var h: Int; var color: (UInt8, UInt8, UInt8); var dying: Bool; var state: Int; var timer: Double; var phase: Double }
+    private var distBuildings: [Building] = []
+    private var cityBuildings: [Building] = []
+    private var cityWindows: [CityWindow] = []
+    private var citySigns: [CitySign] = []
+    private var beacon: (x: Int, y: Int) = (0, 0)
+    private var cityTime: Double = 0
+
     // Miami Nights (Synthwave Sunset): stars + striped sun + perspective grid
     private struct Star { var x: Int; var y: Int; var speed: Double; var phase: Double; var warm: Bool }
     private var stars: [Star] = []
@@ -153,6 +165,7 @@ final class PixelAmbientView: NSView {
         case .rain: stepRain()
         case .snow: stepSnow()
         case .miami: stepMiami()
+        case .city: stepCity()
         }
         render()
     }
@@ -249,7 +262,8 @@ final class PixelAmbientView: NSView {
         vt += (1.0 / 15.0) * 2.0
     }
 
-    private func lerpComponents(_ t: Double, _ a: (UInt8, UInt8, UInt8), _ b: (UInt8, UInt8, UInt8)) -> (UInt8, UInt8, UInt8) {
+    private func lerpComponents(_ tIn: Double, _ a: (UInt8, UInt8, UInt8), _ b: (UInt8, UInt8, UInt8)) -> (UInt8, UInt8, UInt8) {
+        let t = max(0, min(1, tIn))
         let r = Double(a.0) + (Double(b.0) - Double(a.0)) * t
         let g = Double(a.1) + (Double(b.1) - Double(a.1)) * t
         let bl = Double(a.2) + (Double(b.2) - Double(a.2)) * t
@@ -325,6 +339,164 @@ final class PixelAmbientView: NSView {
         }
     }
 
+    // MARK: - Neon City (procedural Blade Runner skyline)
+
+    private func generateCity() {
+        distBuildings = []
+        cityBuildings = []
+        cityWindows = []
+        citySigns = []
+
+        // distant tips: full width, 2-6 rows, 1px apart
+        var x = 0
+        while x < Self.gridW {
+            let w = min(2 + Int.random(in: 0...3), Self.gridW - x)
+            let h = 2 + Int.random(in: 0...4)
+            distBuildings.append(Building(x: x, w: w, h: h, antenna: false, antennaH: 0))
+            x += w + 1
+        }
+
+        // foreground skyline: full width, tips 4-16 rows, 1px apart, center band shorter
+        let gapL = 26, gapR = 64
+        var cx = 0
+        while cx < Self.gridW {
+            let w = min(3 + Int.random(in: 0...4), Self.gridW - cx)
+            let mid = cx > gapL - 4 && cx < gapR - 4
+            let h = (mid ? 4 : 6) + Int.random(in: 0...(mid ? 7 : 10))
+            cityBuildings.append(Building(x: cx, w: w, h: h,
+                                          antenna: Bool.random() && Bool.random() || !mid && Bool.random(),
+                                          antennaH: 2 + Int.random(in: 0...1)))
+            cx += w + 1
+        }
+
+        // windows: sparse, near the tips, warm + cool mix
+        for b in cityBuildings {
+            let n = 3 + Int.random(in: 0...4)
+            for _ in 0..<n {
+                let warm = Bool.random()
+                let c: (UInt8, UInt8, UInt8) = warm ? (255, 217, 160) : (155, 216, 255)
+                cityWindows.append(CityWindow(
+                    x: b.x + 1 + Int.random(in: 0...max(0, b.w - 2)),
+                    y: Self.gridH - b.h + 1 + Int.random(in: 0...max(0, Int(Double(b.h) * 0.6))),
+                    r: c.0, g: c.1, b: c.2,
+                    base: 0.25 + Double.random(in: 0...0.3),
+                    toggler: Bool.random() && Bool.random(),
+                    timer: Double.random(in: 0...8), on: true))
+            }
+        }
+
+        // neon signs: 5, spread across the width, hanging below tips; first one dies
+        let signPalette: [(UInt8, UInt8, UInt8)] = [
+            (255, 46, 136), (34, 211, 238), (252, 238, 10),
+            (74, 222, 128), (255, 138, 61), (244, 114, 182)
+        ]
+        for i in 0..<5 {
+            let idx = min(cityBuildings.count - 1,
+                          Int((Double(i) + Double.random(in: 0...0.6)) * Double(cityBuildings.count) / 5.0))
+            let b = cityBuildings[idx]
+            citySigns.append(CitySign(
+                x: Bool.random() ? b.x : b.x + b.w - 1,
+                y: Self.gridH - b.h + 2,
+                h: 4 + Int.random(in: 0...4),
+                color: signPalette[i % signPalette.count],
+                dying: i == 0, state: 1,
+                timer: 3 + Double.random(in: 0...8),
+                phase: Double.random(in: 0...10)))
+        }
+
+        // beacon on the tallest tip
+        let tallest = cityBuildings.reduce(cityBuildings[0]) { $1.h > $0.h ? $1 : $0 }
+        beacon = (x: tallest.x + tallest.w / 2,
+                  y: Self.gridH - tallest.h - (tallest.antenna ? tallest.antennaH : 0) - 1)
+        cityTime = 0
+    }
+
+    private func stepCity() {
+        let dt = 1.0 / 15.0
+        cityTime += dt
+        for i in cityWindows.indices {
+            guard cityWindows[i].toggler else { continue }
+            cityWindows[i].timer -= dt
+            if cityWindows[i].timer <= 0 {
+                cityWindows[i].on.toggle()
+                cityWindows[i].timer = 4 + Double.random(in: 0...8)
+            }
+        }
+        for i in citySigns.indices {
+            guard citySigns[i].dying else { continue }
+            citySigns[i].timer -= dt
+            if citySigns[i].timer <= 0 {
+                citySigns[i].state = citySigns[i].state == 1 ? 0 : 1
+                citySigns[i].timer = citySigns[i].state == 1
+                    ? (Double.random(in: 0...1) < 0.3 ? 0.1 + Double.random(in: 0...0.2) : 2 + Double.random(in: 0...5))
+                    : 0.05 + Double.random(in: 0...0.25)
+            }
+        }
+    }
+
+    private func drawCity() {
+        // light-pollution glow low over the distant tips
+        let glowTop = Self.gridH - 16
+        let pink = rgbBytes(theme.accentHex)
+        let orange = rgbBytes(theme.calculatorAccentHex)
+        for y in glowTop..<Self.gridH {
+            let t = Double(y - glowTop) / Double(Self.gridH - glowTop)   // 0…<1
+            let c = lerpComponents(t, pink, orange)
+            let a = 0.13 * t
+            if a > 0.004 {
+                for x in 0..<Self.gridW { putPixel(x, y, c.0, c.1, c.2, a) }
+            }
+        }
+
+        // distant tips (hazy silhouettes)
+        let distC: (UInt8, UInt8, UInt8) = (6, 4, 16)
+        for b in distBuildings {
+            for y in (Self.gridH - b.h)..<Self.gridH {
+                for x in b.x..<(b.x + b.w) { putPixel(x, y, distC.0, distC.1, distC.2, 0.9) }
+            }
+        }
+
+        // foreground silhouettes + antennas
+        let fgC: (UInt8, UInt8, UInt8) = (3, 2, 8)
+        for b in cityBuildings {
+            for y in (Self.gridH - b.h)..<Self.gridH {
+                for x in b.x..<(b.x + b.w) { putPixel(x, y, fgC.0, fgC.1, fgC.2, 0.95) }
+            }
+            if b.antenna {
+                let ax = b.x + b.w / 2
+                for y in (Self.gridH - b.h - b.antennaH)..<(Self.gridH - b.h) {
+                    putPixel(ax, y, fgC.0, fgC.1, fgC.2, 0.95)
+                }
+            }
+        }
+
+        // windows (toggler windows blink on/off)
+        for w in cityWindows {
+            guard w.toggler ? w.on : true else { continue }
+            let a = min(1.0, w.base * (w.toggler && w.on ? 1.25 : 1.0))
+            putPixel(w.x, w.y, w.r, w.g, w.b, a)
+        }
+
+        // neon signs (the dying one stutters) + faint halo
+        for s in citySigns {
+            var a = s.dying ? 0.9 : 0.8 + 0.12 * sin(cityTime * 3 + s.phase)
+            if s.dying && s.state == 0 { a = 0.08 }
+            for y in s.y..<(s.y + s.h) {
+                putPixel(s.x, y, s.color.0, s.color.1, s.color.2, a)
+                putPixel(s.x - 1, y, s.color.0, s.color.1, s.color.2, a * 0.15)
+                putPixel(s.x + 1, y, s.color.0, s.color.1, s.color.2, a * 0.15)
+            }
+        }
+
+        // aviation beacon: slow red pulse on the tallest tip
+        let pulse = 0.25 + 0.75 * pow(0.5 + 0.5 * sin(cityTime * 1.4), 2)
+        putPixel(beacon.x, beacon.y, 255, 59, 92, pulse)
+        putPixel(beacon.x - 1, beacon.y, 255, 59, 92, pulse * 0.25)
+        putPixel(beacon.x + 1, beacon.y, 255, 59, 92, pulse * 0.25)
+        putPixel(beacon.x, beacon.y - 1, 255, 59, 92, pulse * 0.25)
+        putPixel(beacon.x, beacon.y + 1, 255, 59, 92, pulse * 0.25)
+    }
+
     // MARK: - Masks & fades
 
     private func centerMask(_ x: Int, _ y: Int) -> Double {
@@ -364,6 +536,7 @@ final class PixelAmbientView: NSView {
         heightMap = [Int](repeating: 0, count: Self.gridW)
         glows = []
         wind = 0; windTarget = 0; windTimer = 60
+        generateCity()
         stars = (0..<9).map { _ in
             Star(x: Int.random(in: 0..<Self.gridW),
                  y: Int.random(in: 0..<(horizon - 8)),
@@ -399,6 +572,7 @@ final class PixelAmbientView: NSView {
         case .rain: drawRain()
         case .snow: drawSnow()
         case .miami: drawMiami()
+        case .city: drawCity()
         }
         publish()
     }

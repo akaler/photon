@@ -6,7 +6,7 @@ public enum ThemeKind: String, Codable, CaseIterable, Sendable {
     case carbonSolid
     case schematic
     case paper
-    case synth
+    case city
     case matrix
     case sunset
     case ice
@@ -17,7 +17,7 @@ public enum ThemeKind: String, Codable, CaseIterable, Sendable {
         case .carbonSolid: return "Carbon Solid"
         case .schematic:   return "Schematic"
         case .paper:       return "Paper"
-        case .synth:       return "Neon Synth"
+        case .city:        return "Neon City"
         case .matrix:      return "Acid Matrix"
         case .sunset:      return "Synthwave Sunset"
         case .ice:         return "Ice Circuit"
@@ -155,13 +155,13 @@ public struct Theme: Sendable, Equatable {
                 showsHeader: false, showsStreak: false,
                 usesDottedDividers: false, showsSlotChips: true
             )
-        case .synth, .matrix, .sunset, .ice:
+        case .city, .matrix, .sunset, .ice:
             // Neon family: shared skeleton (accent-bar, streak, chips), distinct palettes.
             let p: (bgTop: String, bgBottom: String, border: String, text: String,
                     accent: String, secondary: String, streakSoft: String, streakBright: String,
                     onSel: String)
             switch kind {
-            case .synth:
+            case .city:
                 p = ("#0B0716", "#0A0612", "#E879F926", "#EAF2FF",
                      "#22D3EE", "#F472B6", "#F472B6", "#22D3EE", "#04121A")
             case .matrix:

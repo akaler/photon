@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photon — Neon City POC v2 (dense skyline · foreground signs)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0b12;
+    color: #E6EDF5;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+    padding: 40px 24px 80px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header.page { text-align: center; margin-bottom: 28px; max-width: 760px; }
+  header.page h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  header.page p { color: #8b93a5; margin-top: 8px; font-size: 14px; line-height: 1.55; }
+  header.page p b { color: #c6cdd9; }
+
+  .controls {
+    display: flex; gap: 20px; align-items: center; margin-bottom: 40px;
+    background: #14121b; border: 1px solid rgba(255,255,255,0.09);
+    padding: 12px 20px; border-radius: 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #8b93a5;
+  }
+  .controls label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .controls select { background: #1c1a26; color: #E6EDF5; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 3px 6px; font-family: inherit; }
+  .controls button {
+    background: #1c1a26; color: #22D3EE; border: 1px solid rgba(34,211,238,0.35);
+    border-radius: 6px; padding: 4px 10px; font-family: inherit; cursor: pointer;
+  }
+
+  .demo { margin-bottom: 72px; }
+  .demo-label { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; max-width: 720px; }
+  .demo-label .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+    color: #22D3EE; background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.14);
+  }
+  .demo-label h2 { font-size: 19px; font-weight: 650; }
+  .demo-notes { max-width: 720px; color: #8b93a5; font-size: 13px; line-height: 1.55; margin-bottom: 16px; }
+  .demo-notes b { color: #c6cdd9; }
+
+  .panel {
+    position: relative; width: 720px; height: 460px;
+    border-radius: 8px; overflow: hidden;
+    border: 1px solid rgba(232,121,249,0.15);
+  }
+  .panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.42) 26%,
+      rgba(0,0,0,0.42) 76%, rgba(0,0,0,0.14) 100%);
+  }
+  .ui { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  .searchrow { display: flex; align-items: center; gap: 10px; padding: 16px 20px; }
+  .caret-sym { color: #22D3EE; font-family: ui-monospace, Menlo, monospace; font-size: 25px; font-weight: 500; }
+  .q { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 25px; font-weight: 500; color: #EAF2FF; }
+  .q .caret {
+    display: inline-block; width: 9px; height: 22px; background: #22D3EE;
+    vertical-align: -3px; margin-left: 4px;
+    animation: blink 1.1s steps(1) infinite;
+    box-shadow: 0 0 10px #22D3EE;
+  }
+  @keyframes blink { 0%,60% {opacity:1} 61%,100% {opacity:0.15} }
+  .streak {
+    height: 1px; margin: 0 20px;
+    background: linear-gradient(90deg, transparent 0%, rgba(244,114,182,0.6) 28%, rgba(34,211,238,0.95) 55%, transparent 100%);
+  }
+  .section {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: #22D3EE; opacity: 0.8; padding: 12px 20px 4px;
+  }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; position: relative; }
+  .icon { width: 28px; flex: 0 0 28px; text-align: center; font-size: 20px; }
+  .meta { flex: 1; min-width: 0; }
+  .name { font-size: 17px; color: #EAF2FF; font-weight: 500; }
+  .path { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: rgba(234,242,255,0.5); margin-top: 1px; }
+  .row.selected { background: rgba(34,211,238,0.10); }
+  .row.selected::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+    background: #22D3EE; box-shadow: 0 0 14px #22D3EE;
+  }
+  .row.selected .name { text-shadow: 0 0 14px #22D3EE; }
+  .slot { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 10px;
+    color: rgba(234,242,255,0.5); border: 1px solid rgba(232,121,249,0.2); padding: 1px 5px; border-radius: 3px; }
+  .row.selected .slot { color: #22D3EE; border-color: #22D3EE; }
+  .calc { color: #F472B6; }
+  .footer {
+    margin-top: auto; display: flex; align-items: center; gap: 16px; padding: 9px 20px;
+    border-top: 1px solid rgba(232,121,249,0.15);
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: rgba(234,242,255,0.5);
+  }
+  .footer kbd { background: rgba(255,255,255,0.05); border: 1px solid rgba(232,121,249,0.2); border-radius: 3px; padding: 1px 5px; font-family: inherit; }
+  .footer .count { margin-left: auto; color: #22D3EE; }
+
+  .impl-note { max-width: 720px; margin-top: -36px; color: #8b93a5; font-size: 13px; line-height: 1.6; }
+  .impl-note b { color: #c6cdd9; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>Photon — Neon City POC v2</h1>
+  <p>Three compositions of the same idea: <b>a dense forest of skyscrapers in the distance</b>
+  (two depth layers) and a <b>foreground neon sign</b> that owns the frame. Same 90×58 pixel
+  grid, same 15fps engine, procedurally generated — hit <b>↻ regenerate</b> on each.</p>
+</header>
+
+<div class="controls">
+  <label>FPS
+    <select id="fps">
+      <option value="10">10</option>
+      <option value="15" selected>15</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="shield" checked> text shield</label>
+  <label><input type="checkbox" id="paused"> pause</label>
+  <button id="regen">↻ regenerate all</button>
+</div>
+
+<!-- V1 -->
+<div class="demo">
+  <div class="demo-label"><span class="tag">V1 · Dense Harbour</span><h2>Skyline forest + LED ticker sign</h2></div>
+  <p class="demo-notes"><b>Two distance layers</b> — a hazy far row and a denser mid row — fill the
+  whole width. A very tall tower on the right carries a <b>framed LED ticker sign</b>: the glyph
+  dots scroll sideways like a stock ticker, re-rolling as they go. One <b>dying bar sign</b> buzzes
+  on a mid tower. Beacon on the tallest spire.</p>
+  <div class="panel">
+    <canvas id="cv1" width="90" height="58"></canvas>
+    <div class="scrim" data-shield></div>
+    <div class="ui">
+      <div class="searchrow"><span class="caret-sym">›</span><span class="q">terminal<span class="caret"></span></span></div>
+      <div class="streak"></div>
+      <div class="section">Best match</div>
+      <div class="row selected"><div class="icon">🖥️</div><div class="meta"><div class="name">Terminal</div><div class="path">/System/Applications/Utilities/Terminal.app</div></div><span class="slot">⌘1</span></div>
+      <div class="row"><div class="icon">📝</div><div class="meta"><div class="name">TextEdit</div><div class="path">/System/Applications/TextEdit.app</div></div><span class="slot">⌘2</span></div>
+      <div class="footer"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="count">2 results</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- V2 -->
+<div class="demo">
+  <div class="demo-label"><span class="tag">V2 · The Canyon</span><h2>Street canyon + banner sign overhead</h2></div>
+  <p class="demo-notes">Looking <b>up</b>: very tall towers wall in both sides, a dense skyline
+  visible down the canyon, and a <b>banner sign strung across the gap</b> between the two front
+  towers — mounting arms and all. The ticker glyphs scroll overhead. Most cinematic of the three.</p>
+  <div class="panel">
+    <canvas id="cv2" width="90" height="58"></canvas>
+    <div class="scrim" data-shield></div>
+    <div class="ui">
+      <div class="searchrow"><span class="caret-sym">›</span><span class="q">terminal<span class="caret"></span></span></div>
+      <div class="streak"></div>
+      <div class="section">Best match</div>
+      <div class="row selected"><div class="icon">🖥️</div><div class="meta"><div class="name">Terminal</div><div class="path">/System/Applications/Utilities/Terminal.app</div></div><span class="slot">⌘1</span></div>
+      <div class="row"><div class="icon">📝</div><div class="meta"><div class="name">TextEdit</div><div class="path">/System/Applications/TextEdit.app</div></div><span class="slot">⌘2</span></div>
+      <div class="footer"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="count">2 results</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- V3 -->
+<div class="demo">
+  <div class="demo-label"><span class="tag">V3 · Nathan Road</span><h2>The sign forest</h2></div>
+  <p class="demo-notes">Real Hong Kong: the buildings <b>recede</b> (low dark roofline in front,
+  towers behind) and the <b>signs do the talking</b> — a forest of vertical neon bars and small
+  framed signs at mixed heights and mixed colors, one of them dying. The skyline glows behind them.</p>
+  <div class="panel">
+    <canvas id="cv3" width="90" height="58"></canvas>
+    <div class="scrim" data-shield></div>
+    <div class="ui">
+      <div class="searchrow"><span class="caret-sym">›</span><span class="q">terminal<span class="caret"></span></span></div>
+      <div class="streak"></div>
+      <div class="section">Best match</div>
+      <div class="row selected"><div class="icon">🖥️</div><div class="meta"><div class="name">Terminal</div><div class="path">/System/Applications/Utilities/Terminal.app</div></div><span class="slot">⌘1</span></div>
+      <div class="row"><div class="icon">📝</div><div class="meta"><div class="name">TextEdit</div><div class="path">/System/Applications/TextEdit.app</div></div><span class="slot">⌘2</span></div>
+      <div class="footer"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="count">2 results</span></div>
+    </div>
+  </div>
+</div>
+
+<p class="impl-note">
+  <b>All three share:</b> procedural generation (↻ regenerate), two-depth skyline, toggling windows,
+  flickering neon, and the <b>scrolling ticker sign</b> — dot patterns re-roll as they shift, like
+  a real LED board. Same tiny bitmap, 15fps, occlusion-gated, &lt;1% CPU.
+</p>
+
+<script>
+const W = 90, H = 58;
+const cv1 = document.getElementById('cv1');
+const cv2 = document.getElementById('cv2');
+const cv3 = document.getElementById('cv3');
+const contexts = {
+  cv1: cv1.getContext('2d'),
+  cv2: cv2.getContext('2d'),
+  cv3: cv3.getContext('2d')
+};
+const fpsSel = document.getElementById('fps');
+const pausedEl = document.getElementById('paused');
+const shieldEl = document.getElementById('shield');
+const scrims = document.querySelectorAll('.scrim');
+const SIGN_COLORS = ['#FF2E88', '#22D3EE', '#FCEE0A', '#4ADE80', '#FF8A3D', '#F472B6'];
+
+let vt = 0;
+const hash = (x, y) => { const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return n - Math.floor(n); };
+
+function fillLayer(x0, x1, wMin, wMax, hMin, hMax) {
+  const towers = [];
+  let x = x0;
+  while (x < x1) {
+    const w = Math.min(wMin + Math.floor(Math.random() * (wMax - wMin + 1)), x1 - x);
+    const h = hMin + Math.floor(Math.random() * (hMax - hMin + 1));
+    towers.push({ x, w, h });
+    x += w + (Math.random() < 0.25 ? 1 : 0);
+  }
+  return towers;
+}
+
+function addWindows(towers, out, count, yBase) {
+  for (let i = 0; i < count; i++) {
+    const t = towers[Math.floor(Math.random() * towers.length)];
+    if (!t) continue;
+    out.push({
+      x: t.x + 1 + Math.floor(Math.random() * Math.max(1, t.w - 2)),
+      y: H - 3 - Math.floor(Math.random() * Math.max(1, t.h - 3)),
+      color: Math.random() < 0.5 ? '#FFD9A0' : '#9BD8FF',
+      base: 0.2 + Math.random() * 0.3,
+      toggler: Math.random() < 0.3, timer: Math.random() * 8, on: true
+    });
+  }
+}
+
+function makeTicker(x, y, w, h, frame, dot) {
+  return { x, y, w, h, frame, dot, shift: 0, timer: 0 };
+}
+
+/* ---------- build the three cities ---------- */
+function buildV1() {
+  const far = fillLayer(0, W, 3, 7, 5, 10);
+  const mid = fillLayer(0, W, 5, 9, 12, 22);
+  const edges = [...fillLayer(0, 9, 6, 10, 30, 46), ...fillLayer(81, W, 6, 10, 30, 46)];
+  const windows = [];
+  addWindows(mid, windows, 16);
+  // ticker sign mounted high on the right edge tower (make one extra tall)
+  edges[edges.length - 1].h = 48;
+  const ticker = makeTicker(64, 10, 15, 8, '#22D3EE', '#F472B6');
+  // bars: one dying, one healthy, on mid towers
+  const bars = [];
+  const b1t = mid[Math.floor(mid.length * 0.3)];
+  bars.push({ x: b1t.x + Math.floor(b1t.w / 2), y: H - b1t.h + 2, h: 6, color: '#F472B6', dying: true, state: 1, timer: 4, phase: 0 });
+  const b2t = mid[Math.floor(mid.length * 0.7)];
+  bars.push({ x: b2t.x + Math.floor(b2t.w / 2), y: H - b2t.h + 3, h: 5, color: '#4ADE80', dying: false, state: 1, timer: 0, phase: 2 });
+  const tallest = mid.reduce((a, b) => (b.h > a.h ? b : a), mid[0]);
+  const beacon = { x: tallest.x + Math.floor(tallest.w / 2), y: H - tallest.h - 1 };
+  const stars = [];
+  for (let i = 0; i < 4; i++) stars.push({ x: Math.floor(Math.random() * W * 0.5), y: 2 + Math.floor(Math.random() * 6), p: Math.random() * 6 });
+  return { far, mid, edges, windows, bars, ticker, beacon, stars, banner: null, framed: [] };
+}
+
+function buildV2() {
+  const far = fillLayer(0, W, 3, 6, 8, 14);
+  const mid = fillLayer(0, W, 5, 9, 18, 28);
+  const edges = [...fillLayer(0, 11, 8, 12, 34, 48), ...fillLayer(79, W, 8, 12, 34, 48)];
+  const windows = [];
+  addWindows(mid, windows, 14);
+  // banner sign strung across the gap between the front towers
+  const ticker = makeTicker(16, 7, 58, 8, '#FF2E88', '#FCEE0A');
+  const bars = [];
+  const b1t = mid[Math.floor(mid.length * 0.4)];
+  bars.push({ x: b1t.x + Math.floor(b1t.w / 2), y: H - b1t.h + 3, h: 6, color: '#22D3EE', dying: false, state: 1, timer: 0, phase: 1 });
+  const tallest = mid.reduce((a, b) => (b.h > a.h ? b : a), mid[0]);
+  const beacon = { x: tallest.x + Math.floor(tallest.w / 2), y: H - tallest.h - 1 };
+  const stars = [];
+  for (let i = 0; i < 5; i++) stars.push({ x: 12 + Math.floor(Math.random() * 66), y: 2 + Math.floor(Math.random() * 4), p: Math.random() * 6 });
+  return { far, mid, edges, windows, bars, ticker, beacon, stars, banner: null, framed: [] };
+}
+
+function buildV3() {
+  const far = fillLayer(0, W, 3, 6, 5, 9);
+  const mid = fillLayer(0, W, 5, 8, 10, 16);
+  const roof = fillLayer(0, W, 6, 10, 3, 6);
+  const windows = [];
+  addWindows(mid, windows, 14);
+  addWindows(roof, windows, 6);
+  // sign forest: vertical bars rising from behind the roofline + 2 small framed signs
+  const bars = [];
+  for (let i = 0; i < 6; i++) {
+    const x = 4 + Math.floor(Math.random() * (W - 10));
+    const h = 6 + Math.floor(Math.random() * 12);
+    bars.push({ x, y: H - 8 - h + 2, h, color: SIGN_COLORS[i % SIGN_COLORS.length],
+                dying: i === 2, state: 1, timer: 3 + Math.random() * 5, phase: i * 1.7 });
+  }
+  const framed = [
+    { x: 14, y: 20, w: 8, h: 5, frame: '#F472B6', dot: '#FCEE0A' },
+    { x: 58, y: 24, w: 7, h: 4, frame: '#4ADE80', dot: '#22D3EE' }
+  ];
+  const ticker = null, beacon = null, stars = [];
+  return { far, mid, edges: roof, windows, bars, ticker, beacon, stars, banner: null, framed };
+}
+
+const demos = [
+  { id: 'cv1', state: buildV1() },
+  { id: 'cv2', state: buildV2() },
+  { id: 'cv3', state: buildV3() }
+];
+
+/* ---------- drawing ---------- */
+function drawScene(ctx, s, opts) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0B0716');
+  bg.addColorStop(1, '#0A0612');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // city glow above the skyline
+  const glowTop = H - 26;
+  const g1 = ctx.createLinearGradient(0, glowTop, 0, H - 4);
+  g1.addColorStop(0, 'rgba(255,46,136,0)');
+  g1.addColorStop(0.6, 'rgba(255,46,136,0.08)');
+  g1.addColorStop(1, 'rgba(255,138,61,0.12)');
+  ctx.fillStyle = g1;
+  ctx.fillRect(0, glowTop, W, H - 4 - glowTop);
+
+  // stars (if any)
+  for (const st of s.stars) {
+    const tw = 0.4 + 0.6 * Math.pow(Math.sin(vt * 1.2 + st.p), 2);
+    ctx.fillStyle = `rgba(255,233,244,${(tw * 0.7).toFixed(2)})`;
+    ctx.fillRect(st.x, st.y, 1, 1);
+  }
+
+  // far layer (hazy)
+  ctx.fillStyle = 'rgba(10,7,22,0.75)';
+  for (const t2 of s.far) ctx.fillRect(t2.x, H - t2.h, t2.w, t2.h);
+
+  // mid layer (denser, darker)
+  ctx.fillStyle = 'rgba(4,3,10,0.95)';
+  for (const t2 of s.mid) ctx.fillRect(t2.x, H - t2.h, t2.w, t2.h);
+
+  // far + mid windows
+  for (const w of s.windows) {
+    if (w.toggler && !w.on) continue;
+    ctx.globalAlpha = w.base;
+    ctx.fillStyle = w.color;
+    ctx.fillRect(w.x, w.y, 1, 1);
+    ctx.globalAlpha = 1;
+  }
+
+  // edge/roofline towers (near-black)
+  ctx.fillStyle = '#030208';
+  for (const t2 of s.edges) ctx.fillRect(t2.x, H - t2.h, t2.w, t2.h);
+
+  // banner mounting arms (V2)
+  if (s.ticker && opts.banner) {
+    ctx.fillStyle = 'rgba(255,46,136,0.5)';
+    ctx.fillRect(opts.bannerArmL, s.ticker.y + 2, s.ticker.x - opts.bannerArmL + 1, 1);
+    ctx.fillRect(s.ticker.x + s.ticker.w - 1, s.ticker.y + 2, opts.bannerArmR - s.ticker.x - s.ticker.w + 2, 1);
+  }
+
+  // vertical bar signs
+  for (const b of s.bars) {
+    let a = b.dying ? 0.9 : 0.8 + 0.12 * Math.sin(vt * 3 + b.phase);
+    if (b.dying && b.state === 0) a = 0.08;
+    ctx.globalAlpha = Math.max(0.06, a);
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, 1, b.h);
+    ctx.globalAlpha = Math.max(0.04, a * 0.15);
+    ctx.fillRect(b.x - 1, b.y, 3, b.h);
+    ctx.globalAlpha = 1;
+  }
+
+  // small framed signs (V3)
+  for (const f of s.framed) {
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = f.frame;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(f.x + 0.5, f.y + 0.5, f.w, f.h);
+    ctx.fillStyle = f.dot;
+    const lit = hash(Math.floor(vt * 2), f.x) > 0.3;
+    if (lit) ctx.fillRect(f.x + 2, f.y + 2, f.w - 4, 1);
+    ctx.globalAlpha = 1;
+  }
+
+  // ticker sign (frame + scrolling dots)
+  if (s.ticker) {
+    const tk = s.ticker;
+    ctx.fillStyle = tk.frame;
+    ctx.fillRect(tk.x, tk.y, tk.w, 1);
+    ctx.fillRect(tk.x, tk.y + tk.h - 1, tk.w, 1);
+    ctx.fillRect(tk.x, tk.y, 1, tk.h);
+    ctx.fillRect(tk.x + tk.w - 1, tk.y, 1, tk.h);
+    // scrolling glyph dots (two text rows inside)
+    for (let y = tk.y + 2; y <= tk.y + tk.h - 3; y += 2) {
+      for (let x = tk.x + 2; x < tk.x + tk.w - 2; x++) {
+        const h2 = hash(x - tk.shift, y);
+        if (h2 > 0.55) {
+          ctx.fillStyle = h2 > 0.9 ? '#EAF2FF' : tk.dot;
+          ctx.globalAlpha = 0.9;
+          ctx.fillRect(x, y, 1, 1);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    // subtle whole-sign buzz
+    if (hash(Math.floor(vt * 6), 7) > 0.96) {
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(tk.x, tk.y, tk.w, tk.h);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // beacon
+  if (s.beacon) {
+    const pulse = 0.25 + 0.75 * Math.pow(0.5 + 0.5 * Math.sin(vt * 1.4), 2);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#FF3B5C';
+    ctx.fillRect(s.beacon.x, s.beacon.y, 1, 1);
+    ctx.globalAlpha = 1;
+  }
+}
+
+const bannerOpts = { cv2: { banner: true, bannerArmL: 11, bannerArmR: 79 } };
+
+function tickAll(dt) {
+  vt += dt;
+  for (const d of demos) {
+    const s = d.state;
+    // window toggles
+    for (const w of s.windows) {
+      if (!w.toggler) continue;
+      w.timer -= dt;
+      if (w.timer <= 0) { w.on = !w.on; w.timer = 4 + Math.random() * 8; }
+    }
+    // dying bars
+    for (const b of s.bars) {
+      if (!b.dying) continue;
+      b.timer -= dt;
+      if (b.timer <= 0) {
+        b.state = b.state === 1 ? 0 : 1;
+        b.timer = b.state === 1 ? (Math.random() < 0.3 ? 0.1 + Math.random() * 0.2 : 2 + Math.random() * 5)
+                                : 0.05 + Math.random() * 0.25;
+      }
+    }
+    // ticker scroll
+    if (s.ticker) {
+      s.ticker.timer -= dt;
+      if (s.ticker.timer <= 0) { s.ticker.shift++; s.ticker.timer = 0.4; }
+    }
+  }
+}
+
+function drawAll() {
+  for (const d of demos) {
+    drawScene(contexts[d.id], d.state, bannerOpts[d.id] || {});
+  }
+}
+
+let timer = null;
+function startLoop() {
+  if (timer) clearInterval(timer);
+  const fps = parseInt(fpsSel.value);
+  timer = setInterval(() => {
+    if (!pausedEl.checked) tickAll(1 / fps);
+    drawAll();
+  }, 1000 / fps);
+}
+shieldEl.addEventListener('change', () => { scrims.forEach(el => el.style.display = shieldEl.checked ? '' : 'none'); });
+fpsSel.addEventListener('change', startLoop);
+document.getElementById('regen').addEventListener('click', () => {
+  demos[0].state = buildV1();
+  demos[1].state = buildV2();
+  demos[2].state = buildV3();
+});
+startLoop();
+</script>
+</body>
+</html>

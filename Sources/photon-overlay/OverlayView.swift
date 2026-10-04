@@ -700,7 +700,7 @@ private struct ThemeRow: View {
                 .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
                 .foregroundStyle(settingsTextColor(theme, isSelected: isSelected))
             // living badge for the themes that have background ambience
-            if kind == .matrix || kind == .ice || kind == .sunset {
+            if kind == .matrix || kind == .ice || kind == .sunset || kind == .city {
                 PixelBadge(kind: kind)
                     .frame(width: 16, height: 26)
             }
@@ -760,6 +760,24 @@ private struct PixelBadge: View {
                                               width: cell, height: cell)
                             ctx.fill(Path(rect), with: .color((k == 0 ? bright : accent).opacity(a)))
                         }
+                    } else if kind == .city {
+                        // mini skyline: building tips + flickering neon + beacon
+                        let dark = Color(hex: "#030208")
+                        let tips: [(Double, Double)] = [(0, 10), (6, 14), (11, 8)]
+                        for tip in tips {
+                            let rect = CGRect(x: tip.0, y: size.height - tip.1,
+                                              width: 4.5, height: tip.1)
+                            ctx.fill(Path(rect), with: .color(dark.opacity(0.95)))
+                        }
+                        // flickering vertical sign on the tall one
+                        let buzz = sin(t * 9) > -0.3 ? 1.0 : 0.12
+                        let signRect = CGRect(x: 7.2, y: size.height - 22,
+                                              width: 1.6, height: 9)
+                        ctx.fill(Path(signRect), with: .color(Color(hex: "#FF2E88").opacity(buzz)))
+                        // beacon pulse
+                        let pulse = 0.25 + 0.75 * pow(0.5 + 0.5 * sin(t * 1.4), 2)
+                        let bRect = CGRect(x: 7.9, y: size.height - 16.5, width: 1.6, height: 1.6)
+                        ctx.fill(Path(bRect), with: .color(Color(hex: "#FF3B5C").opacity(pulse)))
                     } else if kind == .sunset {
                         // mini striped sun with drifting scanline gaps
                         let cyR = Double(rows) * 0.62
