@@ -154,18 +154,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let panel else { return }
         positionCenteredOnMainScreen(panel)
         state.resetQuery()
+        // Start from the closed state BEFORE the panel is visible, so the
+        // entrance animation never begins from an already-open frame (which
+        // read as a stutter: open → dip toward closed → open).
+        withoutAnimation { state.isPresented = false }
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         // Must fire AFTER the panel is key, or the view's focus assertion
         // lands on a non-key window and is dropped.
         state.notifyReopen()
+        // Kick off the entrance settle in the same runloop as the panel
+        // ordering — no sleep, no extra runloop hop — so the 40ms scale/fade
+        // starts on the panel's first visible frame.
+        state.isPresented = true
         if state.results.isEmpty { state.scan() }
     }
 
     private func hide() {
         panel?.orderOut(nil)
+        // Reset while hidden (no animation) so the next open starts closed.
+        withoutAnimation { state.isPresented = false }
         state.resetQuery()
+    }
+
+    /// Apply a state change with animations suppressed (used for the
+    /// hidden-state appearance reset).
+    private func withoutAnimation(_ body: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, body)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -196,6 +214,10 @@ final class OverlayPanel: NSPanel {
         )
         self.isFloatingPanel = true
         self.becomesKeyOnlyIfNeeded = false
+        // Kill the system window zoom (the panel scales up from the center
+        // when shown by default). We render our own entrance — this window
+        // should just appear instantly.
+        self.animationBehavior = .none
         self.level = .floating
         self.isOpaque = false
         self.backgroundColor = .clear

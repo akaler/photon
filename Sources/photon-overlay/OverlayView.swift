@@ -61,8 +61,6 @@ struct OverlayView: View {
     @State private var editingFolder: Int? = nil
     /// While editing a folder, which limit is active (false = depth, true = cap).
     @State private var editingCap = false
-    /// Drives the fast fade/scale-in when the overlay opens.
-    @State private var appeared = false
 
     private var theme: Theme { state.theme }
 
@@ -77,22 +75,20 @@ struct OverlayView: View {
         .frame(width: 720, height: 460)
         .background { ambientBackground }
         .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
-        // Fast entrance: sub-150ms fade + micro-scale so it reads as instant,
-        // not floaty.
-        .opacity(appeared ? 1 : 0)
-        .scaleEffect(appeared ? 1.0 : 0.965)
-        .animation(.easeOut(duration: 0.13), value: appeared)
+        // Fast entrance, now that the system window zoom is disabled: a very
+        // subtle 0.75% scale + whisper of fade over ~40ms (~5 frames at
+        // 120Hz) — enough frames to stay smooth, and the travel is tiny so
+        // it's barely more than an instant appearance with a hint of life.
+        .opacity(state.isPresented ? 1 : 0.98)
+        .scaleEffect(state.isPresented ? 1.0 : 0.9925)
+        .animation(.easeOut(duration: 0.04), value: state.isPresented)
         .onKeyPress { handleKey($0) }
         .task {
-            appeared = true
             searchFocused = true
             if state.results.isEmpty { state.scan() }
         }
         .onChange(of: state.focusGeneration) { _, _ in
-            appeared = false
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 20_000_000)
-                withAnimation(.easeOut(duration: 0.13)) { appeared = true }
                 try? await Task.sleep(nanoseconds: 100_000_000) // let the panel become key
                 searchFocused = true
             }

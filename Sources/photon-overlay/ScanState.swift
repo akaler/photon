@@ -171,6 +171,11 @@ final class ScanState: ObservableObject {
     /// Bumped every time the overlay reopens, so the view can re-assert
     /// search-field focus (a panel's focus doesn't survive orderOut).
     @Published private(set) var focusGeneration = 0
+    /// Drives the overlay entrance fade/scale. The app delegate resets this
+    /// to `false` while the panel is hidden, so the panel's first visible
+    /// frame is the closed state and it fades straight open — instead of
+    /// starting fully open and dipping back toward closed.
+    @Published var isPresented = false
 
     func notifyReopen() {
         focusGeneration += 1
