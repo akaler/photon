@@ -94,6 +94,7 @@ final class PixelAmbientView: NSView {
         layer?.magnificationFilter = .nearest          // the pixel-art look
         layer?.contentsGravity = .resize
         resetState()
+        preRollCity()                                 // build the initial skyline
     }
 
     required init?(coder: NSCoder) { fatalError("unsupported") }
@@ -129,15 +130,20 @@ final class PixelAmbientView: NSView {
     private func syncVisibility() {
         let isVisible = window?.occlusionState.contains(.visible) ?? false
         if isVisible {
-            resetState()                              // fresh snow / clear trails each open
+            // Fresh transient state (rain columns, snowbank, stars…). The Neon
+            // City skyline is deliberately NOT regenerated here — it was
+            // pre-rolled on close, so it's stable and ready to draw.
+            resetState()
             if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 render()                              // single static frame, no timer
             } else {
                 start()
+                render()                              // draw frame 1 now — no blank gap
             }
         } else {
             stop()
             resetState()
+            preRollCity()                             // build the next city while hidden
         }
     }
 
@@ -536,7 +542,6 @@ final class PixelAmbientView: NSView {
         heightMap = [Int](repeating: 0, count: Self.gridW)
         glows = []
         wind = 0; windTarget = 0; windTimer = 60
-        generateCity()
         stars = (0..<9).map { _ in
             Star(x: Int.random(in: 0..<Self.gridW),
                  y: Int.random(in: 0..<(horizon - 8)),
@@ -547,6 +552,17 @@ final class PixelAmbientView: NSView {
         vt = 0
         frameCount = 0
         buf = [UInt8](repeating: 0, count: Self.gridW * Self.gridH * 4)
+    }
+
+    /// Neon City only: generate a fresh skyline and draw it into the layer
+    /// right away. Called once at init and on every close, so when the panel
+    /// opens the city is already built and on-screen from the first frame —
+    /// no rebuild flash after ⌘Space, and no blank background while the first
+    /// 15fps tick waits.
+    private func preRollCity() {
+        guard effect == .city else { return }
+        generateCity()
+        render()
     }
 
     /// 20 visible flakes: far layer slow/dim, near layer faster/brighter.
